@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="en" dir="ltr">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Order Confirmation — MR. ZAIN</title>
+    <meta
+      name="description"
+      content="Review your confirmed MR. ZAIN Cash on Delivery order receipt and delivery details."
+    />
+
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;500;600;700&family=IBM+Plex+Sans+Arabic:wght@400;500;600;700&family=Outfit:wght@500;600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+
+    <link rel="stylesheet" href="/css/variables.css" />
+    <link rel="stylesheet" href="/css/reset.css" />
+    <link rel="stylesheet" href="/css/global.css" />
+    <link rel="stylesheet" href="/css/layout.css" />
+    <link rel="stylesheet" href="/css/components.css" />
+    <link rel="stylesheet" href="/css/storefront.css" />
+    <link rel="stylesheet" href="/css/responsive.css" />
+    <link rel="stylesheet" href="/css/rtl.css" />
+  </head>
+  <body>
+    <div id="site-announcement"></div>
+    <header id="site-header"></header>
+
+    <main id="app-main">
+      <section class="page-intro">
+        <div class="container">
+          <span class="section-kicker" data-i18n="orderConfirmation.eyebrow">Order Confirmed</span>
+          <h1 class="page-intro__title" data-i18n="orderConfirmation.title">
+            Thank you for your order
+          </h1>
+          <p class="page-intro__subtitle" data-i18n="orderConfirmation.subtitle">
+            Your Cash on Delivery order has been recorded and stock is reserved.
+          </p>
+        </div>
+      </section>
+
+      <section class="order-confirmation-section">
+        <div class="container">
+          <div id="order-confirmation-root"></div>
+        </div>
+      </section>
+    </main>
+
+    <footer id="site-footer"></footer>
+
+    <script type="module" src="/js/pages/order-confirmation.js"></script>
+  </body>
+</html>

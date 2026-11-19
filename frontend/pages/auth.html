@@ -1,0 +1,286 @@
+<!DOCTYPE html>
+<html lang="en" dir="ltr">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Account Access — MR. ZAIN</title>
+    <meta
+      name="description"
+      content="Sign in or create your MR. ZAIN customer account across Egypt."
+    />
+
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;500;600;700&family=IBM+Plex+Sans+Arabic:wght@400;500;600;700&family=Outfit:wght@500;600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+
+    <link rel="stylesheet" href="/css/variables.css" />
+    <link rel="stylesheet" href="/css/reset.css" />
+    <link rel="stylesheet" href="/css/global.css" />
+    <link rel="stylesheet" href="/css/layout.css" />
+    <link rel="stylesheet" href="/css/components.css" />
+    <link rel="stylesheet" href="/css/storefront.css" />
+    <link rel="stylesheet" href="/css/responsive.css" />
+    <link rel="stylesheet" href="/css/rtl.css" />
+  </head>
+  <body>
+    <div id="site-announcement"></div>
+    <header id="site-header"></header>
+
+    <main id="app-main">
+      <section class="page-intro">
+        <div class="container">
+          <span class="section-kicker" data-i18n="auth.eyebrow">Client Access</span>
+          <h1 class="page-intro__title" data-i18n="auth.title">Your MR. ZAIN Account</h1>
+          <p class="page-intro__subtitle" data-i18n="auth.subtitle">
+            Sign in or create an account for a seamless storefront experience across Egypt.
+          </p>
+        </div>
+      </section>
+
+      <section class="auth-section">
+        <div class="container">
+          <div class="auth-shell">
+            <div class="auth-tabs" role="tablist">
+              <button
+                type="button"
+                role="tab"
+                id="auth-tab-login"
+                class="auth-tab is-active"
+                aria-selected="true"
+                aria-controls="auth-panel-login"
+                data-i18n="auth.tabLogin"
+              >
+                Sign In
+              </button>
+              <button
+                type="button"
+                role="tab"
+                id="auth-tab-register"
+                class="auth-tab"
+                aria-selected="false"
+                aria-controls="auth-panel-register"
+                data-i18n="auth.tabRegister"
+              >
+                Create Account
+              </button>
+            </div>
+
+            <!-- Login Panel -->
+            <div id="auth-panel-login" role="tabpanel" aria-labelledby="auth-tab-login">
+              <div class="auth-panel-head">
+                <h2 data-i18n="auth.loginHeading">Welcome Back</h2>
+                <p class="text-muted" style="font-size: 0.875rem;" data-i18n="auth.loginDesc">
+                  Enter your email and password to access your account.
+                </p>
+              </div>
+
+              <div id="login-form-status" class="form-status form-status--error" role="alert" hidden style="margin-bottom: 1rem;"></div>
+
+              <form id="login-form" class="auth-form" novalidate>
+                <div class="field">
+                  <label class="field__label" for="login-email" data-i18n="auth.email">Email Address</label>
+                  <input
+                    id="login-email"
+                    name="email"
+                    type="email"
+                    autocomplete="email"
+                    class="input"
+                    data-i18n-placeholder="auth.emailPlaceholder"
+                    placeholder="name@example.com"
+                    required
+                  />
+                  <span id="err-login-email" class="form-error" aria-live="polite"></span>
+                </div>
+
+                <div class="field">
+                  <label class="field__label" for="login-password" data-i18n="auth.password">Password</label>
+                  <div class="password-input-wrap">
+                    <input
+                      id="login-password"
+                      name="password"
+                      type="password"
+                      autocomplete="current-password"
+                      class="input"
+                      data-i18n-placeholder="auth.passwordPlaceholder"
+                      placeholder="Enter your password"
+                      required
+                    />
+                    <button
+                      type="button"
+                      class="password-toggle-btn"
+                      data-toggle-password="login-password"
+                      aria-pressed="false"
+                      aria-label="Show password"
+                    >
+                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true">
+                        <path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z" />
+                        <circle cx="12" cy="12" r="3" />
+                      </svg>
+                    </button>
+                  </div>
+                  <span id="err-login-password" class="form-error" aria-live="polite"></span>
+                </div>
+
+                <label class="auth-check-row">
+                  <input id="login-remember" name="rememberMe" type="checkbox" />
+                  <span data-i18n="auth.rememberMe">Keep me signed in for 30 days</span>
+                </label>
+
+                <button type="submit" id="login-submit-btn" class="btn btn--primary" data-i18n="auth.submitLogin">
+                  Sign In
+                </button>
+              </form>
+
+              <div class="auth-switch-note">
+                <span data-i18n="auth.switchToRegisterPrompt">New to MR. ZAIN?</span>
+                <button type="button" id="switch-to-register" class="auth-switch-link" data-i18n="auth.switchToRegisterAction">
+                  Create an account
+                </button>
+              </div>
+            </div>
+
+            <!-- Register Panel -->
+            <div id="auth-panel-register" role="tabpanel" aria-labelledby="auth-tab-register" hidden>
+              <div class="auth-panel-head">
+                <h2 data-i18n="auth.registerHeading">Create Customer Account</h2>
+                <p class="text-muted" style="font-size: 0.875rem;" data-i18n="auth.registerDesc">
+                  Join MR. ZAIN for faster access to your profile and seasonal drops.
+                </p>
+              </div>
+
+              <div id="register-form-status" class="form-status form-status--error" role="alert" hidden style="margin-bottom: 1rem;"></div>
+
+              <form id="register-form" class="auth-form" novalidate>
+                <div class="field">
+                  <label class="field__label" for="register-full-name" data-i18n="auth.fullName">Full Name</label>
+                  <input
+                    id="register-full-name"
+                    name="fullName"
+                    type="text"
+                    autocomplete="name"
+                    class="input"
+                    data-i18n-placeholder="auth.fullNamePlaceholder"
+                    placeholder="Karim Hassan"
+                    required
+                  />
+                  <span id="err-register-full-name" class="form-error" aria-live="polite"></span>
+                </div>
+
+                <div class="field">
+                  <label class="field__label" for="register-email" data-i18n="auth.email">Email Address</label>
+                  <input
+                    id="register-email"
+                    name="email"
+                    type="email"
+                    autocomplete="email"
+                    class="input"
+                    data-i18n-placeholder="auth.emailPlaceholder"
+                    placeholder="name@example.com"
+                    required
+                  />
+                  <span id="err-register-email" class="form-error" aria-live="polite"></span>
+                </div>
+
+                <div class="field">
+                  <label class="field__label" for="register-phone" data-i18n="auth.phone">Phone Number (Optional)</label>
+                  <input
+                    id="register-phone"
+                    name="phone"
+                    type="tel"
+                    autocomplete="tel"
+                    class="input"
+                    data-i18n-placeholder="auth.phonePlaceholder"
+                    placeholder="+20 100 123 4567"
+                  />
+                  <span class="field__hint" data-i18n="auth.phoneHint">Egyptian mobile format (+201XXXXXXXXX or 01XXXXXXXXX).</span>
+                  <span id="err-register-phone" class="form-error" aria-live="polite"></span>
+                </div>
+
+                <div class="field">
+                  <label class="field__label" for="register-password" data-i18n="auth.password">Password</label>
+                  <div class="password-input-wrap">
+                    <input
+                      id="register-password"
+                      name="password"
+                      type="password"
+                      autocomplete="new-password"
+                      class="input"
+                      data-i18n-placeholder="auth.passwordPlaceholder"
+                      placeholder="Enter your password"
+                      required
+                    />
+                    <button
+                      type="button"
+                      class="password-toggle-btn"
+                      data-toggle-password="register-password"
+                      aria-pressed="false"
+                      aria-label="Show password"
+                    >
+                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true">
+                        <path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z" />
+                        <circle cx="12" cy="12" r="3" />
+                      </svg>
+                    </button>
+                  </div>
+                  <span class="field__hint" data-i18n="auth.passwordHint">Minimum 8 characters with uppercase, lowercase, and a number.</span>
+                  <span id="err-register-password" class="form-error" aria-live="polite"></span>
+                </div>
+
+                <div class="field">
+                  <label class="field__label" for="register-confirm-password" data-i18n="auth.confirmPassword">Confirm Password</label>
+                  <div class="password-input-wrap">
+                    <input
+                      id="register-confirm-password"
+                      name="confirmPassword"
+                      type="password"
+                      autocomplete="new-password"
+                      class="input"
+                      data-i18n-placeholder="auth.confirmPasswordPlaceholder"
+                      placeholder="Re-enter your password"
+                      required
+                    />
+                    <button
+                      type="button"
+                      class="password-toggle-btn"
+                      data-toggle-password="register-confirm-password"
+                      aria-pressed="false"
+                      aria-label="Show password"
+                    >
+                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true">
+                        <path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z" />
+                        <circle cx="12" cy="12" r="3" />
+                      </svg>
+                    </button>
+                  </div>
+                  <span id="err-register-confirm-password" class="form-error" aria-live="polite"></span>
+                </div>
+
+                <button type="submit" id="register-submit-btn" class="btn btn--primary" data-i18n="auth.submitRegister">
+                  Create Account
+                </button>
+              </form>
+
+              <div class="auth-switch-note">
+                <span data-i18n="auth.switchToLoginPrompt">Already have an account?</span>
+                <button type="button" id="switch-to-login" class="auth-switch-link" data-i18n="auth.switchToLoginAction">
+                  Sign in instead
+                </button>
+              </div>
+            </div>
+
+            <p class="auth-security-note" data-i18n="auth.securityNote">
+              Protected by server-managed HttpOnly session cookies and encrypted credentials.
+            </p>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <footer id="site-footer"></footer>
+
+    <script type="module" src="/js/pages/auth.js"></script>
+  </body>
+</html>

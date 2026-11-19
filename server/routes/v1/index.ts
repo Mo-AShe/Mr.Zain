@@ -1,0 +1,30 @@
+import { Router } from "express";
+import { addressesRouter } from "./addresses.js";
+import { adminRouter } from "./admin.js";
+import { authRouter } from "./auth.js";
+import { cartRouter } from "./cart.js";
+import { categoriesRouter } from "./categories.js";
+import { checkoutRouter } from "./checkout.js";
+import { collectionsRouter } from "./collections.js";
+import { healthRouter } from "./health.js";
+import { homepageRouter } from "./homepage.js";
+import { ordersRouter } from "./orders.js";
+import { productsRouter } from "./products.js";
+import { settingsRouter } from "./settings.js";
+import { wishlistRouter } from "./wishlist.js";
+
+export const v1Router = Router();
+
+v1Router.use("/health", healthRouter);
+v1Router.use("/auth", authRouter);
+v1Router.use("/admin", adminRouter);
+v1Router.use("/addresses", addressesRouter);
+v1Router.use("/cart", cartRouter);
+v1Router.use("/wishlist", wishlistRouter);
+v1Router.use("/checkout", checkoutRouter);
+v1Router.use("/orders", ordersRouter);
+v1Router.use("/products", productsRouter);
+v1Router.use("/categories", categoriesRouter);
+v1Router.use("/collections", collectionsRouter);
+v1Router.use("/homepage", homepageRouter);
+v1Router.use("/settings", settingsRouter);

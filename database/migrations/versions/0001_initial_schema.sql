@@ -1,0 +1,2 @@
+-- Migration 0001: Initial MR. ZAIN PostgreSQL schema
+-- TODO: Add CREATE TABLE statements for core e-commerce entities.

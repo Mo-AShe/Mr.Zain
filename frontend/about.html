@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="en" dir="ltr">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>About — MR. ZAIN</title>
+    <meta
+      name="description"
+      content="Discover the story, fabric discipline, and minimalist Egyptian streetwear philosophy behind MR. ZAIN."
+    />
+
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;500;600;700&family=IBM+Plex+Sans+Arabic:wght@400;500;600;700&family=Outfit:wght@500;600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+
+    <link rel="stylesheet" href="/css/variables.css" />
+    <link rel="stylesheet" href="/css/reset.css" />
+    <link rel="stylesheet" href="/css/global.css" />
+    <link rel="stylesheet" href="/css/layout.css" />
+    <link rel="stylesheet" href="/css/components.css" />
+    <link rel="stylesheet" href="/css/storefront.css" />
+    <link rel="stylesheet" href="/css/responsive.css" />
+    <link rel="stylesheet" href="/css/rtl.css" />
+  </head>
+  <body>
+    <div id="site-announcement"></div>
+    <header id="site-header"></header>
+
+    <main id="app-main">
+      <section class="page-intro">
+        <div class="container">
+          <span class="section-kicker" data-i18n="about.eyebrow">Our Story</span>
+          <h1 id="about-page-title" class="page-intro__title" data-i18n="about.title">
+            Built in Cairo. Cut with quiet permanence.
+          </h1>
+          <p id="about-page-body" class="page-intro__subtitle" data-i18n="about.intro">
+            MR. ZAIN began with a straightforward frustration: Egyptian winter streetwear was either overly loud or lacked fabric weight. We set out to craft understated garments that feel substantial the moment you put them on.
+          </p>
+        </div>
+      </section>
+
+      <section class="section">
+        <div class="container about-split">
+          <div style="display: flex; flex-direction: column; gap: 1rem;">
+            <span class="section-kicker" data-i18n="about.philosophyKicker">Brand Philosophy</span>
+            <h2 data-i18n="about.philosophyTitle">Less noise, heavier cotton.</h2>
+            <p class="text-muted" data-i18n="about.philosophyBody1">
+              Every hoodie, sweatshirt, and jacket starts with raw material discipline. We prioritize dense brushed Egyptian fleece, tonal stitching, and proportions tailored for layering.
+            </p>
+            <p class="text-muted" data-i18n="about.philosophyBody2">
+              Rather than chasing weekly micro-trends, MR. ZAIN releases focused winter capsules designed to stay relevant season after season.
+            </p>
+          </div>
+
+          <div class="about-media-frame">
+            <img
+              src="/assets/images/mr-zain-logo.png"
+              alt="MR. ZAIN"
+              style="height: 68px; width: auto; mix-blend-mode: multiply;"
+              referrerPolicy="no-referrer"
+            />
+            <span data-i18n="about.editorialCaption">Cairo Design Studio · Replaceable Editorial Frame</span>
+          </div>
+        </div>
+      </section>
+
+      <section id="brand-principles" class="section section--ivory">
+        <div class="container">
+          <div class="story-grid">
+            <article class="story-item">
+              <span class="story-item__index">01</span>
+              <h3 class="story-item__title" data-i18n="about.pillar1Title">460 GSM Weight</h3>
+              <p class="story-item__text" data-i18n="about.pillar1Desc">
+                Custom-milled cotton fleece engineered for warmth without bulk.
+              </p>
+            </article>
+            <article class="story-item">
+              <span class="story-item__index">02</span>
+              <h3 class="story-item__title" data-i18n="about.pillar2Title">Architectural Fit</h3>
+              <p class="story-item__text" data-i18n="about.pillar2Desc">
+                Structured hoods, clean dropped shoulders, and double-ribbed cuffs.
+              </p>
+            </article>
+            <article class="story-item">
+              <span class="story-item__index">03</span>
+              <h3 class="story-item__title" data-i18n="about.pillar3Title">Honest Craft</h3>
+              <p class="story-item__text" data-i18n="about.pillar3Desc">
+                No inflated branding—only subtle tonal embroidery and durable hardware.
+              </p>
+            </article>
+          </div>
+
+          <div style="margin-top: 3rem; padding-top: 2rem; border-top: 1px solid var(--color-border); display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 1rem;">
+            <h2 style="font-size: 1.375rem;" data-i18n="about.ctaTitle">
+              Have a question about sizing or stockists?
+            </h2>
+            <a href="/contact.html" class="btn btn--primary" data-i18n="about.ctaButton">
+              Contact Our Team
+            </a>
+          </div>
+        </div>
+      </section>
+
+      <section id="store-policies" class="section" aria-labelledby="store-policies-heading">
+        <div class="container">
+          <div class="section-header">
+            <div>
+              <span class="section-kicker" data-i18n="about.policiesKicker">Store Information</span>
+              <h2 id="store-policies-heading" data-i18n="about.policiesTitle">Store Policies &amp; Terms</h2>
+            </div>
+          </div>
+          <div id="about-policies-grid" class="story-grid" style="grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));"></div>
+        </div>
+      </section>
+    </main>
+
+    <footer id="site-footer"></footer>
+
+    <script type="module" src="/js/pages/about.js"></script>
+  </body>
+</html>

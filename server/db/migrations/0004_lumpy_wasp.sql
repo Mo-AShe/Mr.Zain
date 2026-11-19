@@ -1,0 +1,7 @@
+ALTER TABLE "shipping_zones" ADD COLUMN "estimated_delivery_max_days" integer;--> statement-breakpoint
+ALTER TABLE "coupons" ADD CONSTRAINT "coupons_percentage_max" CHECK ("coupons"."discount_type" <> 'percentage' OR "coupons"."discount_value" <= 100);--> statement-breakpoint
+ALTER TABLE "coupons" ADD CONSTRAINT "coupons_max_discount_positive" CHECK ("coupons"."maximum_discount" IS NULL OR "coupons"."maximum_discount" > 0);--> statement-breakpoint
+ALTER TABLE "coupons" ADD CONSTRAINT "coupons_usage_limit_positive" CHECK ("coupons"."usage_limit" IS NULL OR "coupons"."usage_limit" >= 1);--> statement-breakpoint
+ALTER TABLE "coupons" ADD CONSTRAINT "coupons_usage_per_customer_positive" CHECK ("coupons"."usage_per_customer" >= 1);--> statement-breakpoint
+ALTER TABLE "coupons" ADD CONSTRAINT "coupons_date_range_valid" CHECK ("coupons"."starts_at" IS NULL OR "coupons"."expires_at" IS NULL OR "coupons"."expires_at" > "coupons"."starts_at");--> statement-breakpoint
+ALTER TABLE "shipping_zones" ADD CONSTRAINT "shipping_zones_days_range" CHECK ("shipping_zones"."estimated_delivery_max_days" IS NULL OR "shipping_zones"."estimated_delivery_max_days" >= "shipping_zones"."estimated_delivery_days");

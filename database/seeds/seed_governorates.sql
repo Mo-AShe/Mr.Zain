@@ -1,0 +1,2 @@
+-- Seed data for Egyptian governorates and EGP shipping fees
+-- TODO: Insert all 27 Egyptian governorates with standard delivery rates and ETAs.

@@ -1,0 +1,3 @@
+-- MR. ZAIN — PostgreSQL Baseline Schema Reference
+-- TODO: Define full tables for users, addresses, categories, products,
+-- product_variants, carts, cart_items, orders, order_items, payments, and shipping_zones.

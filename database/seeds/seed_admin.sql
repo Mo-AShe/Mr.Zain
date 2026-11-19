@@ -1,0 +1,2 @@
+-- Seed data for initial MR. ZAIN admin account
+-- TODO: Insert default super-admin record (with hashed password in deployment setup).

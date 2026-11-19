@@ -1,0 +1,42 @@
+# Environments & Secrets
+.env
+.env.*
+!.env.example
+!backend/.env.example
+
+# Python / FastAPI
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.Python
+venv/
+.venv/
+env/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Node / Build artifacts
+node_modules/
+build/
+dist/
+coverage/
+
+# PostgreSQL / Database dumps & local data
+*.sql.bak
+*.dump
+pgdata/
+
+# Media / User Uploads
+backend/uploads/
+!backend/uploads/.gitkeep
+
+# Logs & OS
+*.log
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+tmp-stage75-verify.ts
+tmp-stage75-verify.ts

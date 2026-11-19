@@ -1,0 +1,98 @@
+/* ==========================================================================
+   MR. ZAIN — Responsive Breakpoints
+   Desktop (1440px+), Laptop (1024px), Tablet (768px), Mobile (<768px)
+   ========================================================================== */
+
+@media (max-width: 1024px) {
+  .hero__grid {
+    grid-template-columns: 1fr;
+    gap: var(--space-6);
+    padding-block: var(--space-7);
+  }
+
+  .hero__visual {
+    min-height: 300px;
+  }
+
+  .footer-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: var(--space-6);
+  }
+
+  .ui-kit-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 900px) {
+  .main-nav {
+    display: none;
+  }
+
+  .mobile-menu-btn {
+    display: inline-flex;
+  }
+
+  .product-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: var(--space-4);
+  }
+
+  .story-grid {
+    grid-template-columns: 1fr;
+    gap: var(--space-5);
+  }
+}
+
+@media (max-width: 640px) {
+  :root {
+    --container-gutter: 1rem;
+    --header-height: 64px;
+  }
+
+  .announcement-bar {
+    font-size: 11px;
+    padding-inline: 2.25rem;
+  }
+
+  .brand-wordmark {
+    display: none;
+  }
+
+  .brand-logo-img {
+    height: 38px;
+  }
+
+  .header-icon-btn {
+    min-width: 42px;
+    height: 42px;
+  }
+
+  .section {
+    padding-block: var(--space-7);
+  }
+
+  .section-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--space-3);
+  }
+
+  .product-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: var(--space-3);
+  }
+
+  .footer-grid {
+    grid-template-columns: 1fr;
+    gap: var(--space-5);
+  }
+
+  .footer-newsletter-form {
+    flex-direction: column;
+  }
+
+  .swatch-row {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}

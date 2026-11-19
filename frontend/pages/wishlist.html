@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="en" dir="ltr">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>My Wishlist — MR. ZAIN</title>
+    <meta
+      name="description"
+      content="View and manage your saved MR. ZAIN garments and move pieces to your shopping bag."
+    />
+
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;500;600;700&family=IBM+Plex+Sans+Arabic:wght@400;500;600;700&family=Outfit:wght@500;600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+
+    <link rel="stylesheet" href="/css/variables.css" />
+    <link rel="stylesheet" href="/css/reset.css" />
+    <link rel="stylesheet" href="/css/global.css" />
+    <link rel="stylesheet" href="/css/layout.css" />
+    <link rel="stylesheet" href="/css/components.css" />
+    <link rel="stylesheet" href="/css/storefront.css" />
+    <link rel="stylesheet" href="/css/responsive.css" />
+    <link rel="stylesheet" href="/css/rtl.css" />
+  </head>
+  <body>
+    <div id="site-announcement"></div>
+    <header id="site-header"></header>
+
+    <main id="app-main">
+      <section class="page-intro">
+        <div class="container">
+          <span class="section-kicker" data-i18n="wishlist.eyebrow">Saved Pieces</span>
+          <h1 class="page-intro__title" data-i18n="wishlist.title">My Wishlist</h1>
+          <p class="page-intro__subtitle" data-i18n="wishlist.subtitle">
+            Keep track of your favorite MR. ZAIN garments and move them to your bag when ready.
+          </p>
+        </div>
+      </section>
+
+      <section class="wishlist-section">
+        <div class="container">
+          <div id="wishlist-root"></div>
+        </div>
+      </section>
+    </main>
+
+    <footer id="site-footer"></footer>
+
+    <script type="module" src="/js/pages/wishlist.js"></script>
+  </body>
+</html>

@@ -1,0 +1,2 @@
+-- Seed data for MR. ZAIN clothing categories
+-- TODO: Insert Men, Women, Egyptian Cotton Essentials, Outerwear, and Accessories categories.
