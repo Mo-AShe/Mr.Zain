@@ -1,3 +1,4 @@
+import { appUrl } from "../utils/paths.js";
 /**
  * MR. ZAIN — Admin Session Guard & Dashboard API Client
  * Uses existing HttpOnly session cookies and double-submit CSRF headers.
@@ -10,7 +11,7 @@ import {
   logoutUser,
 } from "../services/auth-service.js";
 
-const ADMIN_AUTH_REDIRECT = "/pages/auth.html?redirect=%2Fadmin%2Findex.html";
+const ADMIN_AUTH_REDIRECT = ${appUrl("/pages/auth.html?redirect=%2Fadmin%2Findex.html")};
 
 export async function verifyAdminAccess() {
   let sessionUser = null;
@@ -30,7 +31,7 @@ export async function verifyAdminAccess() {
   }
 
   try {
-    const response = await api.get("/admin/me");
+    const response = await api.get(${appUrl("/admin/me")});
     return {
       status: "authorized",
       admin: response?.user || sessionUser,
@@ -48,7 +49,7 @@ export async function verifyAdminAccess() {
 }
 
 export async function fetchAdminDashboardOverview() {
-  const response = await api.get("/admin/dashboard");
+  const response = await api.get(${appUrl("/admin/dashboard")});
   return response?.overview || null;
 }
 
@@ -69,7 +70,7 @@ export async function fetchAdminDashboardSales(params = {}) {
 
 export async function signOutAdmin() {
   await logoutUser();
-  window.location.replace("/pages/auth.html");
+  window.location.replace(${appUrl("/pages/auth.html")});
 }
 
 // ============================================================================
@@ -94,7 +95,7 @@ export async function fetchAdminProductDetail(productId) {
 }
 
 export async function createAdminProductRequest(payload) {
-  const res = await api.post("/admin/products", payload);
+  const res = await api.post(${appUrl("/admin/products")}, payload);
   if (!res?.product?.id) {
     throw new Error("The server did not return the created product.");
   }
@@ -141,7 +142,7 @@ export async function deleteAdminVariantRequest(productId, variantId) {
 // ============================================================================
 
 export async function stageAdminProductImageRequest(file) {
-  const res = await api.request("/admin/products/images/staged", {
+  const res = await api.request(${appUrl("/admin/products/images/staged")}, {
     method: "POST",
     body: file,
     headers: { "Content-Type": file.type },
@@ -208,7 +209,7 @@ export async function fetchAdminCategories(params = {}) {
 }
 
 export async function createAdminCategoryRequest(payload) {
-  const res = await api.post("/admin/categories", payload);
+  const res = await api.post(${appUrl("/admin/categories")}, payload);
   return res?.category || null;
 }
 
@@ -243,7 +244,7 @@ export async function fetchAdminCollectionDetail(collectionId) {
 }
 
 export async function createAdminCollectionRequest(payload) {
-  const res = await api.post("/admin/collections", payload);
+  const res = await api.post(${appUrl("/admin/collections")}, payload);
   return res?.collection || null;
 }
 
@@ -279,7 +280,7 @@ export async function removeProductFromCollectionRequest(collectionId, productId
 // ============================================================================
 
 export async function fetchAdminInventorySummary() {
-  const res = await api.get("/admin/inventory/summary");
+  const res = await api.get(${appUrl("/admin/inventory/summary")});
   return res?.summary || null;
 }
 
@@ -421,7 +422,7 @@ export async function fetchAdminCouponDetail(couponId) {
 }
 
 export async function createAdminCouponRequest(payload) {
-  const res = await api.post("/admin/coupons", payload);
+  const res = await api.post(${appUrl("/admin/coupons")}, payload);
   return res?.coupon || null;
 }
 
@@ -451,7 +452,7 @@ export async function fetchAdminShipping(params = {}) {
 }
 
 export async function createAdminShippingZoneRequest(payload) {
-  const res = await api.post("/admin/shipping/zones", payload);
+  const res = await api.post(${appUrl("/admin/shipping/zones")}, payload);
   return res?.zone || null;
 }
 
@@ -468,7 +469,7 @@ export async function deleteAdminShippingZoneRequest(zoneId) {
 }
 
 export async function updateAdminShippingSettingsRequest(payload) {
-  const res = await api.patch("/admin/shipping/settings", payload);
+  const res = await api.patch(${appUrl("/admin/shipping/settings")}, payload);
   return res?.settings || null;
 }
 
@@ -477,27 +478,27 @@ export async function updateAdminShippingSettingsRequest(payload) {
 // ============================================================================
 
 export async function fetchAdminSettings() {
-  const res = await api.get("/admin/settings");
+  const res = await api.get(${appUrl("/admin/settings")});
   return res?.settings || null;
 }
 
 export async function updateAdminGeneralSettingsRequest(payload) {
-  const res = await api.patch("/admin/settings", payload);
+  const res = await api.patch(${appUrl("/admin/settings")}, payload);
   return res?.settings || null;
 }
 
 export async function updateAdminAvailabilityRequest(payload) {
-  const res = await api.patch("/admin/settings/availability", payload);
+  const res = await api.patch(${appUrl("/admin/settings/availability")}, payload);
   return res?.availability || null;
 }
 
 export async function updateAdminHomepageRequest(payload) {
-  const res = await api.patch("/admin/settings/homepage", payload);
+  const res = await api.patch(${appUrl("/admin/settings/homepage")}, payload);
   return res?.homepage || null;
 }
 
 export async function createAdminBannerRequest(payload) {
-  const res = await api.post("/admin/banners", payload);
+  const res = await api.post(${appUrl("/admin/banners")}, payload);
   return res?.banner || null;
 }
 

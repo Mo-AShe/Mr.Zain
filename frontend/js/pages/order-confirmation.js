@@ -1,3 +1,4 @@
+import { appUrl } from "../utils/paths.js";
 /**
  * MR. ZAIN — Order Confirmation Page Controller
  * Fetches a customer-owned order by ID from /api/v1/orders/:id.
@@ -48,7 +49,7 @@ function renderConfirmationView() {
       description: t("orderConfirmation.notFoundDesc", lang),
       actionLabel: t("orderConfirmation.viewAccountBtn", lang),
       onAction: () => {
-        window.location.href = "/pages/account.html";
+        window.location.href = ${appUrl("/pages/account.html")};
       },
     });
     return;
@@ -77,10 +78,10 @@ function renderConfirmationView() {
       <div id="order-confirmation-detail-slot"></div>
 
       <div class="order-confirmation-actions">
-        <a href="/pages/account.html" class="btn btn--primary">
+        <a href=${appUrl("/pages/account.html")} class="btn btn--primary">
           ${escapeHtml(t("orderConfirmation.viewAccountBtn", lang))}
         </a>
-        <a href="/pages/order-tracking.html?orderNumber=${encodeURIComponent(currentOrder.orderNumber)}" class="btn btn--secondary">
+        <a href=${appUrl("/pages/order-tracking.html?orderNumber=${encodeURIComponent(currentOrder.orderNumber)}")} class="btn btn--secondary">
           ${escapeHtml(t("orderConfirmation.trackOrderBtn", lang))}
         </a>
         <a href="/shop.html" class="btn btn--secondary">

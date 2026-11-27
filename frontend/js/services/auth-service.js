@@ -1,3 +1,4 @@
+import { appUrl } from "../utils/paths.js";
 /**
  * MR. ZAIN — Customer Authentication Service
  * Session state is backed exclusively by server-managed HttpOnly cookies via /api/v1/auth/*.
@@ -120,7 +121,7 @@ export async function logoutUser() {
   }
 }
 
-export function getSafeRedirectUrl(fallback = "/pages/account.html") {
+export function getSafeRedirectUrl(fallback = ${appUrl("/pages/account.html")}) {
   const params = new URLSearchParams(window.location.search);
   const raw = (params.get("redirect") || "").trim();
   if (!raw) return fallback;
@@ -129,7 +130,7 @@ export function getSafeRedirectUrl(fallback = "/pages/account.html") {
   if (!raw.startsWith("/") || raw.startsWith("//") || raw.startsWith("/\\")) {
     return fallback;
   }
-  if (raw.startsWith("/pages/auth.html")) {
+  if (raw.startsWith(${appUrl("/pages/auth.html")})) {
     return fallback;
   }
   return raw;

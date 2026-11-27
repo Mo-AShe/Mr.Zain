@@ -1,3 +1,4 @@
+import { appUrl } from "../utils/paths.js";
 /**
  * MR. ZAIN — Checkout Page Controller
  * Complete 4-step COD checkout backed by Neon PostgreSQL:
@@ -189,7 +190,7 @@ async function refreshQuoteForSelection({ couponOverride } = {}) {
     }
   } catch (err) {
     if (err && err.status === 401) {
-      redirectToAuth("/pages/checkout.html");
+      redirectToAuth(${appUrl("/pages/checkout.html")});
       return;
     }
     if (couponOverride !== undefined) {
@@ -241,7 +242,7 @@ async function loadCheckoutPage({ preserveSelection = true } = {}) {
     }
   } catch (err) {
     if (err && err.status === 401) {
-      redirectToAuth("/pages/checkout.html");
+      redirectToAuth(${appUrl("/pages/checkout.html")});
       return;
     }
     loadError = err;
@@ -403,7 +404,7 @@ function renderCheckoutView() {
               <h2 class="checkout-step-card__title">${escapeHtml(t("checkout.step2Title", lang))}</h2>
               <p class="checkout-step-card__sub">${escapeHtml(t("checkout.step2Subtitle", lang))}</p>
             </div>
-            <a href="/pages/cart.html" class="btn btn--ghost btn--sm">
+            <a href=${appUrl("/pages/cart.html")} class="btn btn--ghost btn--sm">
               ${escapeHtml(t("checkout.backToBag", lang))}
             </a>
           </div>
@@ -726,7 +727,7 @@ function bindCheckoutEvents() {
             await loadCheckoutPage({ preserveSelection: true });
           } catch (err) {
             if (err && err.status === 401) {
-              redirectToAuth("/pages/checkout.html");
+              redirectToAuth(${appUrl("/pages/checkout.html")});
               return;
             }
             showToast(err?.message || t("ui.actionFailed", getLanguage()), "error");
@@ -828,7 +829,7 @@ async function handlePlaceOrder() {
     }
   } catch (err) {
     if (err && err.status === 401) {
-      redirectToAuth("/pages/checkout.html");
+      redirectToAuth(${appUrl("/pages/checkout.html")});
       return;
     }
 

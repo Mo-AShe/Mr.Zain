@@ -1,3 +1,4 @@
+import { appUrl } from "../utils/paths.js";
 /**
  * MR. ZAIN — Wishlist Page Controller
  * Protected customer route backed by Neon PostgreSQL via /api/v1/wishlist and /api/v1/cart.
@@ -232,7 +233,7 @@ function renderWishlistView() {
         );
       } catch (err) {
         if (err && err.status === 401) {
-          redirectToAuth("/pages/wishlist.html");
+          redirectToAuth(${appUrl("/pages/wishlist.html")});
           return;
         }
         if (err && (err.code === "INSUFFICIENT_STOCK" || err.code === "OUT_OF_STOCK")) {
@@ -269,7 +270,7 @@ function renderWishlistView() {
         showToast(t("ui.wishlistRemoved", getLanguage()), "info");
       } catch (err) {
         if (err && err.status === 401) {
-          redirectToAuth("/pages/wishlist.html");
+          redirectToAuth(${appUrl("/pages/wishlist.html")});
           return;
         }
         showToast(
@@ -300,7 +301,7 @@ async function loadWishlistPage() {
   try {
     currentWishlist = await fetchWishlist({ force: true });
     if (!currentWishlist) {
-      redirectToAuth("/pages/wishlist.html");
+      redirectToAuth(${appUrl("/pages/wishlist.html")});
       return;
     }
   } catch (err) {

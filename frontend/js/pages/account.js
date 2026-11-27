@@ -1,3 +1,4 @@
+import { appUrl } from "../utils/paths.js";
 /**
  * MR. ZAIN — Protected Customer Account Page Controller
  * Guards access via GET /api/v1/auth/me and renders:
@@ -86,7 +87,7 @@ async function refreshAddresses() {
     (result) => result.status === "rejected" && result.reason?.status === 401
   );
   if (authError) {
-    redirectToAuth("/pages/account.html");
+    redirectToAuth(${appUrl("/pages/account.html")});
   }
 }
 
@@ -378,7 +379,7 @@ function renderAccountView() {
         <article class="account-card">
           <div class="account-card__header">
             <h2 style="font-size: 1.25rem;">${escapeHtml(t("account.ordersHeading", lang))}</h2>
-            <a href="/pages/order-tracking.html" class="btn btn--ghost btn--sm">
+            <a href=${appUrl("/pages/order-tracking.html")} class="btn btn--ghost btn--sm">
               ${escapeHtml(t("footer.trackOrder", lang))}
             </a>
           </div>
@@ -478,7 +479,7 @@ function bindAccountEvents() {
       renderAccountView();
     } catch (err) {
       if (err?.status === 401) {
-        redirectToAuth("/pages/account.html");
+        redirectToAuth(${appUrl("/pages/account.html")});
         return;
       }
       if (emailError && err?.code === "EMAIL_ALREADY_EXISTS") {
@@ -506,7 +507,7 @@ function bindAccountEvents() {
     try {
       await logoutUser();
       showToast(t("account.signedOutSuccess", getLanguage()), "info");
-      window.location.replace("/pages/auth.html");
+      window.location.replace(${appUrl("/pages/auth.html")});
     } catch {
       signOutBtn.disabled = false;
       signOutBtn.textContent = t("account.signOut", getLanguage());
@@ -567,7 +568,7 @@ function bindAccountEvents() {
         renderAccountView();
       } catch (err) {
         if (err && err.status === 401) {
-          redirectToAuth("/pages/account.html");
+          redirectToAuth(${appUrl("/pages/account.html")});
           return;
         }
         showToast(err?.message || t("ui.actionFailed", getLanguage()), "error");
@@ -594,7 +595,7 @@ function bindAccountEvents() {
             renderAccountView();
           } catch (err) {
             if (err && err.status === 401) {
-              redirectToAuth("/pages/account.html");
+              redirectToAuth(${appUrl("/pages/account.html")});
               return;
             }
             showToast(err?.message || t("ui.actionFailed", getLanguage()), "error");
@@ -620,7 +621,7 @@ function bindAccountEvents() {
         });
       } catch (err) {
         if (err && err.status === 401) {
-          redirectToAuth("/pages/account.html");
+          redirectToAuth(${appUrl("/pages/account.html")});
           return;
         }
         showToast(err?.message || t("ui.actionFailed", getLanguage()), "error");
@@ -661,7 +662,7 @@ function bindAccountEvents() {
             );
           } catch (err) {
             if (err && err.status === 401) {
-              redirectToAuth("/pages/account.html");
+              redirectToAuth(${appUrl("/pages/account.html")});
               return;
             }
             showToast(err?.message || t("ui.actionFailed", getLanguage()), "error");
@@ -705,7 +706,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     await loadAccountData();
   } catch (err) {
     if (err && err.status === 401) {
-      redirectToAuth("/pages/account.html");
+      redirectToAuth(${appUrl("/pages/account.html")});
       return;
     }
     showToast(t("ui.actionFailed", getLanguage()), "error");

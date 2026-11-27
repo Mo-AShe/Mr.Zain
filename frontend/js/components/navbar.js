@@ -1,3 +1,4 @@
+import { appUrl } from "../utils/paths.js";
 /**
  * MR. ZAIN — Shared Storefront Navbar & Accessible Mobile Drawer
  */
@@ -9,8 +10,8 @@ import { openSearchModal, showToast } from "./ui.js";
 
 function isCurrentPath(targetPath) {
   const pathname = window.location.pathname;
-  if (targetPath === "/index.html") {
-    return pathname === "/" || pathname === "/index.html";
+  if (targetPath === ${appUrl("/index.html")}) {
+    return pathname === "/" || pathname === ${appUrl("/index.html")};
   }
   return pathname === targetPath;
 }
@@ -36,7 +37,7 @@ export function renderNavbar(container, state = {}) {
     { href: "/about.html", label: t("nav.about", lang) },
   ];
 
-  const accountHref = user ? "/pages/account.html" : "/pages/auth.html";
+  const accountHref = user ? ${appUrl("/pages/account.html")} : ${appUrl("/pages/auth.html")};
   const accountLabel = user
     ? firstName || t("nav.myAccount", lang)
     : t("nav.signIn", lang);
@@ -60,9 +61,9 @@ export function renderNavbar(container, state = {}) {
           </svg>
         </button>
 
-        <a href="/index.html" class="brand-link" aria-label="MR. ZAIN">
+        <a href=${appUrl("/index.html")} class="brand-link" aria-label="MR. ZAIN">
           <img
-            src="/assets/images/mr-zain-logo.png"
+            src=${appUrl("/assets/images/mr-zain-logo.png")}
             alt="MR. ZAIN"
             class="brand-logo-img"
             referrerPolicy="no-referrer"
@@ -133,12 +134,12 @@ export function renderNavbar(container, state = {}) {
         }
 
         <a
-          href="/pages/wishlist.html"
+          href=${appUrl("/pages/wishlist.html")}
           class="header-icon-btn"
           id="zain-wishlist-trigger"
           aria-label="${t("nav.wishlist", lang)}"
           title="${t("nav.wishlist", lang)}"
-          ${isCurrentPath("/pages/wishlist.html") ? 'aria-current="page"' : ""}
+          ${isCurrentPath(${appUrl("/pages/wishlist.html")}) ? 'aria-current="page"' : ""}
         >
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true">
             <path d="M12 20.5s-7.5-4.7-9.2-9.2C1.7 8.4 3.4 5 6.8 5c2 0 3.6 1 5.2 2.8C13.6 6 15.2 5 17.2 5c3.4 0 5.1 3.4 4 6.3-1.7 4.5-9.2 9.2-9.2 9.2Z" />
@@ -147,12 +148,12 @@ export function renderNavbar(container, state = {}) {
         </a>
 
         <a
-          href="/pages/cart.html"
+          href=${appUrl("/pages/cart.html")}
           class="header-icon-btn"
           id="zain-bag-trigger"
           aria-label="${t("nav.bag", lang)}"
           title="${t("nav.bag", lang)}"
-          ${isCurrentPath("/pages/cart.html") ? 'aria-current="page"' : ""}
+          ${isCurrentPath(${appUrl("/pages/cart.html")}) ? 'aria-current="page"' : ""}
         >
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true">
             <path d="M6 8h12l1 12H5L6 8Z" />
@@ -200,8 +201,8 @@ function mountMobileDrawer(navLinks, lang, user) {
   drawer.innerHTML = `
     <div>
       <div class="mobile-drawer__header">
-        <a href="/index.html" class="brand-link">
-          <img src="/assets/images/mr-zain-logo.png" alt="MR. ZAIN" class="brand-logo-img" referrerPolicy="no-referrer" />
+        <a href=${appUrl("/index.html")} class="brand-link">
+          <img src=${appUrl("/assets/images/mr-zain-logo.png")} alt="MR. ZAIN" class="brand-logo-img" referrerPolicy="no-referrer" />
         </a>
         <button type="button" class="header-icon-btn" id="zain-mobile-close" aria-label="${t("nav.menuClose", lang)}">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
@@ -224,18 +225,18 @@ function mountMobileDrawer(navLinks, lang, user) {
     </div>
 
     <div class="mobile-drawer__footer">
-      <a href="/pages/wishlist.html" class="btn btn--secondary">${escapeHtml(t("nav.wishlist", lang))}</a>
-      <a href="/pages/cart.html" class="btn btn--secondary">${escapeHtml(t("nav.bag", lang))}</a>
+      <a href=${appUrl("/pages/wishlist.html")} class="btn btn--secondary">${escapeHtml(t("nav.wishlist", lang))}</a>
+      <a href=${appUrl("/pages/cart.html")} class="btn btn--secondary">${escapeHtml(t("nav.bag", lang))}</a>
       ${
         user
           ? `
-          <a href="/pages/account.html" class="btn btn--secondary">${escapeHtml(t("nav.myAccount", lang))}</a>
+          <a href=${appUrl("/pages/account.html")} class="btn btn--secondary">${escapeHtml(t("nav.myAccount", lang))}</a>
           <button type="button" class="btn btn--secondary" id="zain-mobile-logout-btn">
             ${escapeHtml(t("nav.signOut", lang))}
           </button>
         `
           : `
-          <a href="/pages/auth.html" class="btn btn--secondary">${escapeHtml(t("nav.signIn", lang))}</a>
+          <a href=${appUrl("/pages/auth.html")} class="btn btn--secondary">${escapeHtml(t("nav.signIn", lang))}</a>
         `
       }
       <button type="button" class="btn btn--primary" id="zain-mobile-lang-btn">
@@ -253,14 +254,14 @@ async function handleSignOutClick() {
     await logoutUser();
     showToast(t("account.signedOutSuccess", lang), "info");
     if (
-      window.location.pathname === "/pages/account.html" ||
-      window.location.pathname === "/pages/cart.html" ||
-      window.location.pathname === "/pages/wishlist.html" ||
-      window.location.pathname === "/pages/checkout.html" ||
-      window.location.pathname === "/pages/order-confirmation.html" ||
-      window.location.pathname === "/pages/order-tracking.html"
+      window.location.pathname === ${appUrl("/pages/account.html")} ||
+      window.location.pathname === ${appUrl("/pages/cart.html")} ||
+      window.location.pathname === ${appUrl("/pages/wishlist.html")} ||
+      window.location.pathname === ${appUrl("/pages/checkout.html")} ||
+      window.location.pathname === ${appUrl("/pages/order-confirmation.html")} ||
+      window.location.pathname === ${appUrl("/pages/order-tracking.html")}
     ) {
-      window.location.replace("/pages/auth.html");
+      window.location.replace(${appUrl("/pages/auth.html")});
     }
   } catch {
     showToast(t("auth.genericError", lang), "error");
