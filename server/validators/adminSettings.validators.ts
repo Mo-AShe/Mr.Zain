@@ -15,6 +15,21 @@ const cleanText = (minLen: number, maxLen: number, label: string) =>
       message: `${label} must not exceed ${maxLen} characters.`,
     });
 
+const httpsUrlOrEmpty = (label: string) =>
+  z
+    .string()
+    .trim()
+    .max(500)
+    .refine((value) => {
+      if (!value) return true;
+      try {
+        const url = new URL(value);
+        return url.protocol === "https:" && Boolean(url.hostname);
+      } catch {
+        return false;
+      }
+    }, `${label} must be an HTTPS URL or empty.`);
+
 export const POLICY_CONTENT_KEYS = [
   "about",
   "contact",
@@ -36,8 +51,11 @@ export const storeInfoUpdateSchema = z.object({
     .email("Please enter a valid contact email address.")
     .max(180)
     .optional(),
-  contactPhone: cleanText(5, 40, "Contact phone").optional(),
-  whatsappNumber: cleanText(5, 40, "WhatsApp number").optional(),
+  contactPhone: cleanText(0, 40, "Contact phone").optional(),
+  whatsappNumber: cleanText(0, 500, "WhatsApp numbers").optional(),
+  instagramUrl: httpsUrlOrEmpty("Instagram URL").optional(),
+  tiktokUrl: httpsUrlOrEmpty("TikTok URL").optional(),
+  facebookUrl: httpsUrlOrEmpty("Facebook URL").optional(),
   storeAddressEn: cleanText(0, 300, "English store address").optional(),
   storeAddressAr: cleanText(0, 300, "Arabic store address").optional(),
   supportHoursEn: cleanText(0, 200, "English support hours").optional(),

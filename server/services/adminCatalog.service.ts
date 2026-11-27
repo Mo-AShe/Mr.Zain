@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { and, asc, desc, eq, ilike, inArray, ne, or, sql } from "drizzle-orm";
 import { db } from "../db/index.js";
 import {
@@ -12,6 +13,17 @@ import {
   productVariants,
 } from "../db/schema.js";
 import { AppError } from "../middleware/errorHandler.js";
+import { getProductPublicationReadiness } from "./product-publication.js";
+import {
+  getBestSellerProductIds,
+  isWithinNewProductWindow,
+} from "./product-merchandising.service.js";
+import {
+  consumeStagedProductImage,
+  discardStagedProductImages,
+  removeStoredProductImage,
+  removeStoredProductImageFile,
+} from "./productImageStorage.service.js";
 import {
   slugifyText,
   type AdminCategoriesQuery,
@@ -20,7 +32,6 @@ import {
   type CreateAdminCategoryInput,
   type CreateAdminCollectionInput,
   type CreateAdminProductInput,
-  type CreateProductImageInput,
   type CreateVariantInput,
   type UpdateAdminCategoryInput,
   type UpdateAdminCollectionInput,
@@ -32,7 +43,6 @@ import {
 export interface AdminVariantDTO {
   id: string;
   productId: string;
-  sku: string;
   size: string;
   color: string;
   price: number;
@@ -73,7 +83,6 @@ export interface AdminProductSummaryDTO {
   primaryImageUrl: string | null;
   variantCount: number;
   activeVariantCount: number;
-  skus: string[];
   createdAt: string;
   updatedAt: string;
 }
@@ -91,6 +100,7 @@ export interface AdminProductDetailDTO extends AdminProductSummaryDTO {
     isActive: boolean;
   }>;
   hasOrderReferences: boolean;
+  publicationReadiness: ReturnType<typeof getProductPublicationReadiness>;
 }
 
 export interface AdminCategoryDTO {
@@ -100,7 +110,6 @@ export interface AdminCategoryDTO {
   name_ar: string;
   description_en: string | null;
   description_ar: string | null;
-  imageUrl: string | null;
   isActive: boolean;
   displayOrder: number;
   productCount: number;
@@ -114,7 +123,6 @@ export interface AdminCollectionDTO {
   name_ar: string;
   description_en: string | null;
   description_ar: string | null;
-  imageUrl: string | null;
   isActive: boolean;
   productCount: number;
   publishedProductCount: number;
@@ -145,12 +153,22 @@ function formatMoneyStr(val: number): string {
 
 function resolveSlugOrThrow(
   explicitSlug: string | undefined,
-  fallbackName: string
+  fallbackName: string,
+  maxLength = 220
 ): string {
-  const candidate = explicitSlug || slugifyText(fallbackName);
+  const candidate =
+    explicitSlug ||
+    slugifyText(fallbackName).slice(0, maxLength).replace(/-+$/g, "");
   if (!candidate || candidate.length < 2) {
     throw new AppError(
       "Unable to generate a valid URL slug. Please provide an explicit lowercase slug.",
+      422,
+      "INVALID_SLUG"
+    );
+  }
+  if (candidate.length > maxLength) {
+    throw new AppError(
+      `Slug must be at most ${maxLength} characters.`,
       422,
       "INVALID_SLUG"
     );
@@ -168,11 +186,7 @@ export async function listAdminProducts(query: AdminProductsQuery) {
   if (query.search) {
     const pattern = `%${query.search}%`;
     conditions.push(
-      sql`(${products.nameEn} ILIKE ${pattern} OR ${products.nameAr} ILIKE ${pattern} OR ${products.slug} ILIKE ${pattern} OR EXISTS (
-        SELECT 1 FROM product_variants pv
-        WHERE pv.product_id = ${products.id}
-          AND pv.sku ILIKE ${pattern}
-      ))`
+      sql`(${products.nameEn} ILIKE ${pattern} OR ${products.nameAr} ILIKE ${pattern} OR ${products.slug} ILIKE ${pattern})`
     );
   }
 
@@ -226,8 +240,6 @@ export async function listAdminProducts(query: AdminProductsQuery) {
       compareAtPrice: products.compareAtPrice,
       isPublished: products.isPublished,
       isFeatured: products.isFeatured,
-      isNew: products.isNew,
-      isBestSeller: products.isBestSeller,
       createdAt: products.createdAt,
       updatedAt: products.updatedAt,
       categoryId: categories.id,
@@ -257,7 +269,7 @@ export async function listAdminProducts(query: AdminProductsQuery) {
 
   const productIds = rows.map((r) => r.id);
 
-  const [imgRows, varRows] = await Promise.all([
+  const [imgRows, varRows, bestSellerProductIds] = await Promise.all([
     db
       .select({
         productId: productImages.productId,
@@ -269,12 +281,12 @@ export async function listAdminProducts(query: AdminProductsQuery) {
     db
       .select({
         productId: productVariants.productId,
-        sku: productVariants.sku,
         isActive: productVariants.isActive,
       })
       .from(productVariants)
       .where(inArray(productVariants.productId, productIds))
       .orderBy(asc(productVariants.createdAt)),
+    getBestSellerProductIds(),
   ]);
 
   const primaryImageMap = new Map<string, string>();
@@ -286,17 +298,15 @@ export async function listAdminProducts(query: AdminProductsQuery) {
 
   const variantMetaMap = new Map<
     string,
-    { total: number; active: number; skus: string[] }
+    { total: number; active: number }
   >();
   for (const v of varRows) {
     const cur = variantMetaMap.get(v.productId) ?? {
       total: 0,
       active: 0,
-      skus: [],
     };
     cur.total += 1;
     if (v.isActive) cur.active += 1;
-    cur.skus.push(v.sku);
     variantMetaMap.set(v.productId, cur);
   }
 
@@ -304,7 +314,6 @@ export async function listAdminProducts(query: AdminProductsQuery) {
     const vMeta = variantMetaMap.get(row.id) ?? {
       total: 0,
       active: 0,
-      skus: [],
     };
     return {
       id: row.id,
@@ -316,8 +325,8 @@ export async function listAdminProducts(query: AdminProductsQuery) {
         row.compareAtPrice !== null ? Number(row.compareAtPrice) : null,
       isPublished: row.isPublished,
       isFeatured: row.isFeatured,
-      isNew: row.isNew,
-      isBestSeller: row.isBestSeller,
+      isNew: isWithinNewProductWindow(row.createdAt),
+      isBestSeller: bestSellerProductIds.has(row.id),
       category: {
         id: row.categoryId,
         slug: row.categorySlug,
@@ -328,7 +337,6 @@ export async function listAdminProducts(query: AdminProductsQuery) {
       primaryImageUrl: primaryImageMap.get(row.id) ?? null,
       variantCount: vMeta.total,
       activeVariantCount: vMeta.active,
-      skus: vMeta.skus,
       createdAt: row.createdAt.toISOString(),
       updatedAt: row.updatedAt.toISOString(),
     };
@@ -360,8 +368,6 @@ export async function getAdminProductById(
       compareAtPrice: products.compareAtPrice,
       isPublished: products.isPublished,
       isFeatured: products.isFeatured,
-      isNew: products.isNew,
-      isBestSeller: products.isBestSeller,
       createdAt: products.createdAt,
       updatedAt: products.updatedAt,
       categoryId: categories.id,
@@ -377,12 +383,11 @@ export async function getAdminProductById(
 
   if (!row) return null;
 
-  const [variantRows, imageRows, colRows] = await Promise.all([
+  const [variantRows, imageRows, colRows, bestSellerProductIds] = await Promise.all([
     db
       .select({
         id: productVariants.id,
         productId: productVariants.productId,
-        sku: productVariants.sku,
         size: productVariants.size,
         color: productVariants.color,
         price: productVariants.price,
@@ -419,6 +424,7 @@ export async function getAdminProductById(
       .innerJoin(collections, eq(collections.id, productCollections.collectionId))
       .where(eq(productCollections.productId, row.id))
       .orderBy(asc(collections.nameEn)),
+    getBestSellerProductIds(),
   ]);
 
   let hasOrderReferences = false;
@@ -447,7 +453,6 @@ export async function getAdminProductById(
     return {
       id: v.id,
       productId: v.productId,
-      sku: v.sku,
       size: v.size,
       color: v.color,
       price: Number(v.price),
@@ -458,6 +463,15 @@ export async function getAdminProductById(
       createdAt: v.createdAt.toISOString(),
     };
   });
+  const publicationReadiness = getProductPublicationReadiness(
+    row.categoryIsActive,
+    variantRows.map((variant) => ({
+      isActive: variant.isActive,
+      quantity: Number(variant.quantity ?? 0),
+      reservedQuantity: Number(variant.reservedQuantity ?? 0),
+    })),
+    imageRows.some((image) => image.imageUrl.trim() !== "")
+  );
 
   const images: AdminProductImageDTO[] = imageRows.map((img) => ({
     id: img.id,
@@ -480,8 +494,8 @@ export async function getAdminProductById(
       row.compareAtPrice !== null ? Number(row.compareAtPrice) : null,
     isPublished: row.isPublished,
     isFeatured: row.isFeatured,
-    isNew: row.isNew,
-    isBestSeller: row.isBestSeller,
+    isNew: isWithinNewProductWindow(row.createdAt),
+    isBestSeller: bestSellerProductIds.has(row.id),
     category: {
       id: row.categoryId,
       slug: row.categorySlug,
@@ -492,7 +506,6 @@ export async function getAdminProductById(
     primaryImageUrl: images[0]?.imageUrl ?? null,
     variantCount: variants.length,
     activeVariantCount: variants.filter((v) => v.isActive).length,
-    skus: variants.map((v) => v.sku),
     variants,
     images,
     collections: colRows.map((c) => ({
@@ -503,68 +516,113 @@ export async function getAdminProductById(
       isActive: c.isActive,
     })),
     hasOrderReferences,
+    publicationReadiness,
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
   };
 }
 
 export async function createAdminProduct(
-  input: CreateAdminProductInput
+  input: CreateAdminProductInput,
+  adminId: string
 ): Promise<AdminProductDetailDTO> {
-  const [cat] = await db
-    .select({ id: categories.id })
-    .from(categories)
-    .where(eq(categories.id, input.categoryId))
-    .limit(1);
-
-  if (!cat) {
-    throw new AppError("Selected category does not exist.", 404, "CATEGORY_NOT_FOUND");
+  const uploadIds = input.imageUploadIds ?? [];
+  const imageUrls = input.imageUrls ?? [];
+  if (uploadIds.length === 0 && imageUrls.length === 0) {
+    throw new AppError("At least one product image is required.", 422, "IMAGE_REQUIRED");
   }
-
-  const slug = resolveSlugOrThrow(input.slug, input.nameEn);
-
-  const [existingSlug] = await db
-    .select({ id: products.id })
-    .from(products)
-    .where(eq(products.slug, slug))
-    .limit(1);
-
-  if (existingSlug) {
+  if (input.isPublished) {
     throw new AppError(
-      "A product with this slug already exists.",
+      "Create the product as a draft, then add an active variant and available stock before publishing.",
       409,
-      "SLUG_ALREADY_EXISTS"
+      "PRODUCT_NOT_READY"
     );
   }
 
-  try {
-    const [created] = await db
-      .insert(products)
-      .values({
-        categoryId: input.categoryId,
-        nameEn: input.nameEn,
-        nameAr: input.nameAr,
-        slug,
-        descriptionEn: input.descriptionEn ?? null,
-        descriptionAr: input.descriptionAr ?? null,
-        basePrice: formatMoneyStr(input.basePrice),
-        compareAtPrice:
-          input.compareAtPrice !== undefined && input.compareAtPrice !== null
-            ? formatMoneyStr(input.compareAtPrice)
-            : null,
-        isPublished: Boolean(input.isPublished),
-        isFeatured: Boolean(input.isFeatured),
-        isNew: Boolean(input.isNew),
-        isBestSeller: Boolean(input.isBestSeller),
-      })
-      .returning({ id: products.id });
+  const slug = resolveSlugOrThrow(input.slug, input.nameEn);
+  const productId = randomUUID();
+  const storedImages: Array<{ imageUrl: string; absolutePath: string }> = [];
 
-    const detail = await getAdminProductById(created.id);
-    if (!detail) {
-      throw new AppError("Failed to load created product.", 500, "INTERNAL_SERVER_ERROR");
-    }
-    return detail;
+  try {
+    await db.transaction(async (tx) => {
+      const [category] = await tx
+        .select({ id: categories.id, isActive: categories.isActive })
+        .from(categories)
+        .where(eq(categories.id, input.categoryId))
+        .for("update")
+        .limit(1);
+      if (!category) {
+        throw new AppError("Selected category does not exist.", 404, "CATEGORY_NOT_FOUND");
+      }
+      if (!category.isActive) {
+        throw new AppError("Products must be assigned to an active category.", 409, "CATEGORY_INACTIVE");
+      }
+
+      const [existingSlug] = await tx
+        .select({ id: products.id })
+        .from(products)
+        .where(eq(products.slug, slug))
+        .limit(1);
+      if (existingSlug) {
+        throw new AppError(
+          "A product with this slug already exists.",
+          409,
+          "SLUG_ALREADY_EXISTS"
+        );
+      }
+
+      await tx
+        .insert(products)
+        .values({
+          id: productId,
+          categoryId: input.categoryId,
+          nameEn: input.nameEn,
+          nameAr: input.nameAr,
+          slug,
+          descriptionEn: input.descriptionEn ?? null,
+          descriptionAr: input.descriptionAr ?? null,
+          basePrice: formatMoneyStr(input.basePrice),
+          compareAtPrice:
+            input.compareAtPrice !== undefined && input.compareAtPrice !== null
+              ? formatMoneyStr(input.compareAtPrice)
+              : null,
+          isPublished: false,
+          isFeatured: Boolean(input.isFeatured),
+        });
+
+      const sourceUrls = uploadIds.length
+        ? await Promise.all(
+            uploadIds.map(async (uploadId) => {
+              const stored = await consumeStagedProductImage(adminId, uploadId, productId);
+              storedImages.push(stored);
+              return stored.imageUrl;
+            })
+          )
+        : imageUrls;
+
+      for (const [displayOrder, imageUrl] of sourceUrls.entries()) {
+        await tx.insert(productImages).values({
+          productId,
+          imageUrl,
+          altText: input.nameEn,
+          displayOrder,
+          isPrimary: displayOrder === 0,
+        });
+      }
+    });
   } catch (err) {
+    const cleanupResults = await Promise.allSettled([
+      ...storedImages.map((image) =>
+        removeStoredProductImageFile(image.absolutePath)
+      ),
+      discardStagedProductImages(adminId, uploadIds),
+    ]);
+    for (const result of cleanupResults) {
+      if (result.status === "rejected") {
+        console.error("Could not clean up an incomplete product image upload.", result.reason);
+      }
+    }
+    if (err instanceof AppError) throw err;
     if (getPgErrorCode(err) === "23505") {
       throw new AppError(
         "A product with this slug already exists.",
@@ -574,6 +632,15 @@ export async function createAdminProduct(
     }
     throw err;
   }
+
+  await discardStagedProductImages(adminId, uploadIds).catch((cleanupError) => {
+    console.error("Could not remove the consumed product image staging directory.", cleanupError);
+  });
+  const detail = await getAdminProductById(productId);
+  if (!detail) {
+    throw new AppError("Failed to load created product.", 500, "INTERNAL_SERVER_ERROR");
+  }
+  return detail;
 }
 
 export async function updateAdminProduct(
@@ -583,6 +650,7 @@ export async function updateAdminProduct(
   const [existing] = await db
     .select({
       id: products.id,
+      categoryId: products.categoryId,
       basePrice: products.basePrice,
       compareAtPrice: products.compareAtPrice,
     })
@@ -592,17 +660,6 @@ export async function updateAdminProduct(
 
   if (!existing) {
     throw new AppError("Product not found.", 404, "PRODUCT_NOT_FOUND");
-  }
-
-  if (input.categoryId !== undefined) {
-    const [cat] = await db
-      .select({ id: categories.id })
-      .from(categories)
-      .where(eq(categories.id, input.categoryId))
-      .limit(1);
-    if (!cat) {
-      throw new AppError("Selected category does not exist.", 404, "CATEGORY_NOT_FOUND");
-    }
   }
 
   const nextBasePrice =
@@ -654,15 +711,110 @@ export async function updateAdminProduct(
   }
   if (input.isPublished !== undefined) updateValues.isPublished = input.isPublished;
   if (input.isFeatured !== undefined) updateValues.isFeatured = input.isFeatured;
-  if (input.isNew !== undefined) updateValues.isNew = input.isNew;
-  if (input.isBestSeller !== undefined) updateValues.isBestSeller = input.isBestSeller;
 
   try {
-    await db
-      .update(products)
-      .set(updateValues)
-      .where(eq(products.id, productId));
+    await db.transaction(async (tx) => {
+      const [lockedProduct] = await tx
+        .select({ id: products.id })
+        .from(products)
+        .where(eq(products.id, productId))
+        .for("update")
+        .limit(1);
+      if (!lockedProduct) {
+        throw new AppError("Product not found.", 404, "PRODUCT_NOT_FOUND");
+      }
+
+      if (
+        input.categoryId !== undefined &&
+        input.categoryId !== existing.categoryId &&
+        input.isPublished !== true
+      ) {
+        const [category] = await tx
+          .select({ isActive: categories.isActive })
+          .from(categories)
+          .where(eq(categories.id, input.categoryId))
+          .for("update")
+          .limit(1);
+        if (!category) {
+          throw new AppError("Selected category does not exist.", 404, "CATEGORY_NOT_FOUND");
+        }
+        if (!category.isActive) {
+          throw new AppError("Products must be assigned to an active category.", 409, "CATEGORY_INACTIVE");
+        }
+      }
+
+      if (input.isPublished === true) {
+        const categoryId = input.categoryId ?? existing.categoryId;
+        const [category] = await tx
+          .select({ isActive: categories.isActive })
+          .from(categories)
+          .where(eq(categories.id, categoryId))
+          .for("update")
+          .limit(1);
+        if (!category) {
+          throw new AppError("Selected category does not exist.", 404, "CATEGORY_NOT_FOUND");
+        }
+
+        const activeVariants = await tx
+          .select({ id: productVariants.id })
+          .from(productVariants)
+          .where(
+            and(
+              eq(productVariants.productId, productId),
+              eq(productVariants.isActive, true)
+            )
+          )
+          .orderBy(asc(productVariants.id))
+          .for("update");
+        const stockRows =
+          activeVariants.length > 0
+            ? await tx
+                .select({
+                  variantId: inventory.variantId,
+                  quantity: inventory.quantity,
+                  reservedQuantity: inventory.reservedQuantity,
+                })
+                .from(inventory)
+                .where(inArray(inventory.variantId, activeVariants.map((v) => v.id)))
+                .orderBy(asc(inventory.variantId))
+                .for("update")
+            : [];
+        const stockByVariantId = new Map(
+          stockRows.map((row) => [row.variantId, row])
+        );
+        const [productImage] = await tx
+          .select({ id: productImages.id })
+          .from(productImages)
+          .where(eq(productImages.productId, productId))
+          .limit(1);
+        const readiness = getProductPublicationReadiness(
+          category.isActive,
+          activeVariants.map((variant) => {
+            const stock = stockByVariantId.get(variant.id);
+            return {
+              isActive: true,
+              quantity: stock?.quantity ?? 0,
+              reservedQuantity: stock?.reservedQuantity ?? 0,
+            };
+          }),
+          Boolean(productImage)
+        );
+        if (!readiness.canPublish) {
+          throw new AppError(
+            "Product is not ready to publish. Add a product image, choose an active category, and add an active variant with available stock.",
+            409,
+            "PRODUCT_NOT_READY"
+          );
+        }
+      }
+
+      await tx
+        .update(products)
+        .set(updateValues)
+        .where(eq(products.id, productId));
+    });
   } catch (err) {
+    if (err instanceof AppError) throw err;
     if (getPgErrorCode(err) === "23505") {
       throw new AppError(
         "A product with this slug already exists.",
@@ -691,6 +843,10 @@ export async function deleteOrArchiveAdminProduct(productId: string) {
     if (!existing) {
       throw new AppError("Product not found.", 404, "PRODUCT_NOT_FOUND");
     }
+    const images = await tx
+      .select({ imageUrl: productImages.imageUrl })
+      .from(productImages)
+      .where(eq(productImages.productId, productId));
 
     const varRows = await tx
       .select({ id: productVariants.id })
@@ -738,7 +894,7 @@ export async function deleteOrArchiveAdminProduct(productId: string) {
     }
 
     await tx.delete(products).where(eq(products.id, productId));
-    return { action: "deleted" as const };
+    return { action: "deleted" as const, imageUrls: images.map((image) => image.imageUrl) };
   });
 
   if (actionResult.action === "archived") {
@@ -746,6 +902,14 @@ export async function deleteOrArchiveAdminProduct(productId: string) {
     return { action: "archived" as const, product };
   }
 
+  const cleanupResults = await Promise.allSettled(
+    actionResult.imageUrls.map((imageUrl) => removeStoredProductImage(imageUrl))
+  );
+  for (const result of cleanupResults) {
+    if (result.status === "rejected") {
+      console.error("Could not remove a product image after deleting the product.", result.reason);
+    }
+  }
   return { action: "deleted" as const, productId };
 }
 
@@ -769,28 +933,14 @@ export async function createProductVariant(
         throw new AppError("Product not found.", 404, "PRODUCT_NOT_FOUND");
       }
 
-      const [skuDup] = await tx
-        .select({ id: productVariants.id })
-        .from(productVariants)
-        .where(eq(productVariants.sku, input.sku))
-        .limit(1);
-
-      if (skuDup) {
-        throw new AppError(
-          "A variant with this SKU already exists.",
-          409,
-          "SKU_ALREADY_EXISTS"
-        );
-      }
-
       const [comboDup] = await tx
         .select({ id: productVariants.id })
         .from(productVariants)
         .where(
           and(
             eq(productVariants.productId, productId),
-            eq(productVariants.size, input.size),
-            eq(productVariants.color, input.color)
+            sql`lower(btrim(${productVariants.size})) = lower(${input.size})`,
+            sql`lower(btrim(${productVariants.color})) = lower(${input.color})`
           )
         )
         .limit(1);
@@ -807,12 +957,13 @@ export async function createProductVariant(
         input.price !== undefined
           ? formatMoneyStr(input.price)
           : formatMoneyStr(Number(prod.basePrice));
+      const internalSku = `MZ-${randomUUID().replaceAll("-", "").toUpperCase()}`;
 
       const [created] = await tx
         .insert(productVariants)
         .values({
           productId,
-          sku: input.sku,
+          sku: internalSku,
           size: input.size,
           color: input.color,
           price: variantPrice,
@@ -834,7 +985,6 @@ export async function createProductVariant(
       return {
         id: created.id,
         productId: created.productId,
-        sku: created.sku,
         size: created.size,
         color: created.color,
         price: Number(created.price),
@@ -849,7 +999,7 @@ export async function createProductVariant(
     if (err instanceof AppError) throw err;
     if (getPgErrorCode(err) === "23505") {
       throw new AppError(
-        "Duplicate SKU or size/color combination for this product.",
+        "A variant with this size and color already exists for this product.",
         409,
         "VARIANT_CONFLICT"
       );
@@ -878,23 +1028,6 @@ export async function updateProductVariant(
     throw new AppError("Product variant not found.", 404, "VARIANT_NOT_FOUND");
   }
 
-  if (input.sku !== undefined) {
-    const [skuDup] = await db
-      .select({ id: productVariants.id })
-      .from(productVariants)
-      .where(
-        and(eq(productVariants.sku, input.sku), ne(productVariants.id, variantId))
-      )
-      .limit(1);
-    if (skuDup) {
-      throw new AppError(
-        "A variant with this SKU already exists.",
-        409,
-        "SKU_ALREADY_EXISTS"
-      );
-    }
-  }
-
   const nextSize = input.size ?? existing.size;
   const nextColor = input.color ?? existing.color;
   if (input.size !== undefined || input.color !== undefined) {
@@ -904,8 +1037,8 @@ export async function updateProductVariant(
       .where(
         and(
           eq(productVariants.productId, productId),
-          eq(productVariants.size, nextSize),
-          eq(productVariants.color, nextColor),
+          sql`lower(btrim(${productVariants.size})) = lower(${nextSize})`,
+          sql`lower(btrim(${productVariants.color})) = lower(${nextColor})`,
           ne(productVariants.id, variantId)
         )
       )
@@ -920,7 +1053,6 @@ export async function updateProductVariant(
   }
 
   const updates: Partial<typeof productVariants.$inferInsert> = {};
-  if (input.sku !== undefined) updates.sku = input.sku;
   if (input.size !== undefined) updates.size = input.size;
   if (input.color !== undefined) updates.color = input.color;
   if (input.price !== undefined) updates.price = formatMoneyStr(input.price);
@@ -934,7 +1066,7 @@ export async function updateProductVariant(
   } catch (err) {
     if (getPgErrorCode(err) === "23505") {
       throw new AppError(
-        "Duplicate SKU or size/color combination for this product.",
+        "A variant with this size and color already exists for this product.",
         409,
         "VARIANT_CONFLICT"
       );
@@ -946,7 +1078,6 @@ export async function updateProductVariant(
     .select({
       id: productVariants.id,
       productId: productVariants.productId,
-      sku: productVariants.sku,
       size: productVariants.size,
       color: productVariants.color,
       price: productVariants.price,
@@ -966,7 +1097,6 @@ export async function updateProductVariant(
   return {
     id: hydrated.id,
     productId: hydrated.productId,
-    sku: hydrated.sku,
     size: hydrated.size,
     color: hydrated.color,
     price: Number(hydrated.price),
@@ -1034,59 +1164,57 @@ export async function deleteOrDeactivateProductVariant(
 }
 
 // ============================================================================
-// Product Images (URL-based gallery management)
+// Product Images
 // ============================================================================
 
 export async function addProductImage(
   productId: string,
-  input: CreateProductImageInput
+  adminId: string,
+  uploadId: string
 ): Promise<AdminProductImageDTO> {
-  return db.transaction(async (tx) => {
-    const [prod] = await tx
-      .select({ id: products.id })
-      .from(products)
-      .where(eq(products.id, productId))
-      .limit(1);
+  let storedImage: Awaited<ReturnType<typeof consumeStagedProductImage>> | undefined;
+  try {
+    const newImage = await consumeStagedProductImage(adminId, uploadId, productId);
+    storedImage = newImage;
+    const created = await db.transaction(async (tx) => {
+      const [prod] = await tx
+        .select({ id: products.id })
+        .from(products)
+        .where(eq(products.id, productId))
+        .for("update")
+        .limit(1);
+      if (!prod) {
+        throw new AppError("Product not found.", 404, "PRODUCT_NOT_FOUND");
+      }
 
-    if (!prod) {
-      throw new AppError("Product not found.", 404, "PRODUCT_NOT_FOUND");
-    }
-
-    const existingImages = await tx
-      .select({
-        id: productImages.id,
-        displayOrder: productImages.displayOrder,
-      })
-      .from(productImages)
-      .where(eq(productImages.productId, productId))
-      .orderBy(desc(productImages.displayOrder));
-
-    const makePrimary = existingImages.length === 0 ? true : Boolean(input.isPrimary);
-    const nextOrder =
-      input.displayOrder !== undefined
-        ? input.displayOrder
-        : existingImages.length === 0
-        ? 0
-        : existingImages[0].displayOrder + 1;
-
-    if (makePrimary && existingImages.length > 0) {
-      await tx
-        .update(productImages)
-        .set({ isPrimary: false })
+      const [lastImage] = await tx
+        .select({ displayOrder: productImages.displayOrder })
+        .from(productImages)
+        .where(eq(productImages.productId, productId))
+        .orderBy(desc(productImages.displayOrder))
+        .limit(1);
+      const currentImages = await tx
+        .select({ id: productImages.id })
+        .from(productImages)
         .where(eq(productImages.productId, productId));
-    }
-
-    const [created] = await tx
-      .insert(productImages)
-      .values({
-        productId,
-        imageUrl: input.imageUrl,
-        altText: input.altText ?? null,
-        displayOrder: nextOrder,
-        isPrimary: makePrimary,
-      })
-      .returning();
-
+      if (currentImages.length >= 10) {
+        throw new AppError("A product can have at most 10 images.", 422, "IMAGE_LIMIT_EXCEEDED");
+      }
+      const [image] = await tx
+        .insert(productImages)
+        .values({
+          productId,
+          imageUrl: newImage.imageUrl,
+          altText: null,
+          displayOrder: lastImage ? lastImage.displayOrder + 1 : 0,
+          isPrimary: !lastImage,
+        })
+        .returning();
+      return image;
+    });
+    await discardStagedProductImages(adminId, [uploadId]).catch((cleanupError) => {
+      console.error("Could not remove the consumed product image staging directory.", cleanupError);
+    });
     return {
       id: created.id,
       productId: created.productId,
@@ -1095,7 +1223,96 @@ export async function addProductImage(
       displayOrder: created.displayOrder,
       isPrimary: created.isPrimary,
     };
+  } catch (error) {
+    const cleanupResults = await Promise.allSettled([
+      ...(storedImage ? [removeStoredProductImageFile(storedImage.absolutePath)] : []),
+      discardStagedProductImages(adminId, [uploadId]),
+    ]);
+    for (const result of cleanupResults) {
+      if (result.status === "rejected") {
+        console.error("Could not clean up an incomplete product image upload.", result.reason);
+      }
+    }
+    throw error;
+  }
+}
+
+export async function replaceProductImage(
+  productId: string,
+  imageId: string,
+  adminId: string,
+  uploadId: string
+): Promise<AdminProductImageDTO> {
+  let storedImage: Awaited<ReturnType<typeof consumeStagedProductImage>> | undefined;
+  try {
+    storedImage = await consumeStagedProductImage(adminId, uploadId, productId);
+  } catch (error) {
+    await discardStagedProductImages(adminId, [uploadId]).catch((cleanupError) => {
+      console.error("Could not clean up a staged replacement image.", cleanupError);
+    });
+    throw error;
+  }
+
+  let result: {
+    existing: typeof productImages.$inferSelect;
+    updated: typeof productImages.$inferSelect;
+  };
+  try {
+    result = await db.transaction(async (tx) => {
+      const [product] = await tx
+        .select({ id: products.id })
+        .from(products)
+        .where(eq(products.id, productId))
+        .for("update")
+        .limit(1);
+      if (!product) {
+        throw new AppError("Product not found.", 404, "PRODUCT_NOT_FOUND");
+      }
+
+      const [existing] = await tx
+        .select()
+        .from(productImages)
+        .where(and(eq(productImages.id, imageId), eq(productImages.productId, productId)))
+        .for("update")
+        .limit(1);
+      if (!existing) {
+        throw new AppError("Product image not found.", 404, "IMAGE_NOT_FOUND");
+      }
+
+      const [updated] = await tx
+        .update(productImages)
+        .set({ imageUrl: storedImage.imageUrl })
+        .where(eq(productImages.id, imageId))
+        .returning();
+      return { existing, updated };
+    });
+  } catch (error) {
+    await removeStoredProductImageFile(storedImage.absolutePath).catch((cleanupError) => {
+      console.error("Could not clean up a failed replacement image.", cleanupError);
+    });
+    await discardStagedProductImages(adminId, [uploadId]).catch((cleanupError) => {
+      console.error("Could not clean up a staged replacement image.", cleanupError);
+    });
+    throw error;
+  }
+
+  await discardStagedProductImages(adminId, [uploadId]).catch((cleanupError) => {
+    console.error("Could not remove the consumed replacement image staging directory.", cleanupError);
   });
+  try {
+    await removeStoredProductImage(result.existing.imageUrl);
+  } catch (error) {
+    console.error("The replacement image was saved, but the previous file could not be removed.", error);
+    throw error;
+  }
+  return {
+    id: result.updated.id,
+    productId: result.updated.productId,
+    imageUrl: result.updated.imageUrl,
+    altText: result.updated.altText,
+    displayOrder: result.updated.displayOrder,
+    isPrimary: result.updated.isPrimary,
+  };
 }
 
 export async function updateProductImage(
@@ -1126,7 +1343,6 @@ export async function updateProductImage(
     }
 
     const updates: Partial<typeof productImages.$inferInsert> = {};
-    if (input.imageUrl !== undefined) updates.imageUrl = input.imageUrl;
     if (input.altText !== undefined) updates.altText = input.altText;
     if (input.displayOrder !== undefined) updates.displayOrder = input.displayOrder;
     if (input.isPrimary !== undefined) updates.isPrimary = input.isPrimary;
@@ -1207,7 +1423,17 @@ export async function reorderProductImages(
 }
 
 export async function deleteProductImage(productId: string, imageId: string) {
-  return db.transaction(async (tx) => {
+  const deleted = await db.transaction(async (tx) => {
+    const [product] = await tx
+      .select({ isPublished: products.isPublished })
+      .from(products)
+      .where(eq(products.id, productId))
+      .for("update")
+      .limit(1);
+    if (!product) {
+      throw new AppError("Product not found.", 404, "PRODUCT_NOT_FOUND");
+    }
+
     const [existing] = await tx
       .select()
       .from(productImages)
@@ -1218,6 +1444,18 @@ export async function deleteProductImage(productId: string, imageId: string) {
 
     if (!existing) {
       throw new AppError("Product image not found.", 404, "IMAGE_NOT_FOUND");
+    }
+
+    const imageCount = await tx
+      .select({ id: productImages.id })
+      .from(productImages)
+      .where(eq(productImages.productId, productId));
+    if (product.isPublished && imageCount.length <= 1) {
+      throw new AppError(
+        "Unpublish the product or add a replacement image before removing its last image.",
+        409,
+        "LAST_PUBLISHED_PRODUCT_IMAGE"
+      );
     }
 
     await tx.delete(productImages).where(eq(productImages.id, imageId));
@@ -1238,8 +1476,10 @@ export async function deleteProductImage(productId: string, imageId: string) {
       }
     }
 
-    return { deletedImageId: imageId };
+    return { deletedImageId: imageId, imageUrl: existing.imageUrl };
   });
+  await removeStoredProductImage(deleted.imageUrl);
+  return { deletedImageId: deleted.deletedImageId };
 }
 
 // ============================================================================
@@ -1276,7 +1516,6 @@ export async function listAdminCategories(
       nameAr: categories.nameAr,
       descriptionEn: categories.descriptionEn,
       descriptionAr: categories.descriptionAr,
-      imageUrl: categories.imageUrl,
       isActive: categories.isActive,
       displayOrder: categories.displayOrder,
       productCount: sql<number>`COUNT(${products.id})::int`,
@@ -1295,7 +1534,6 @@ export async function listAdminCategories(
     name_ar: row.nameAr,
     description_en: row.descriptionEn,
     description_ar: row.descriptionAr,
-    imageUrl: row.imageUrl,
     isActive: row.isActive,
     displayOrder: row.displayOrder,
     productCount: Number(row.productCount ?? 0),
@@ -1314,7 +1552,6 @@ export async function getAdminCategoryById(
       nameAr: categories.nameAr,
       descriptionEn: categories.descriptionEn,
       descriptionAr: categories.descriptionAr,
-      imageUrl: categories.imageUrl,
       isActive: categories.isActive,
       displayOrder: categories.displayOrder,
       productCount: sql<number>`COUNT(${products.id})::int`,
@@ -1335,7 +1572,6 @@ export async function getAdminCategoryById(
     name_ar: row.nameAr,
     description_en: row.descriptionEn,
     description_ar: row.descriptionAr,
-    imageUrl: row.imageUrl,
     isActive: row.isActive,
     displayOrder: row.displayOrder,
     productCount: Number(row.productCount ?? 0),
@@ -1346,7 +1582,7 @@ export async function getAdminCategoryById(
 export async function createAdminCategory(
   input: CreateAdminCategoryInput
 ): Promise<AdminCategoryDTO> {
-  const slug = resolveSlugOrThrow(input.slug, input.nameEn);
+  const slug = resolveSlugOrThrow(input.slug, input.nameEn, 160);
 
   const [dup] = await db
     .select({ id: categories.id })
@@ -1371,7 +1607,6 @@ export async function createAdminCategory(
         slug,
         descriptionEn: input.descriptionEn ?? null,
         descriptionAr: input.descriptionAr ?? null,
-        imageUrl: input.imageUrl ?? null,
         isActive: Boolean(input.isActive),
         displayOrder: input.displayOrder ?? 0,
       })
@@ -1429,7 +1664,6 @@ export async function updateAdminCategory(
   if (input.slug !== undefined) updates.slug = input.slug;
   if (input.descriptionEn !== undefined) updates.descriptionEn = input.descriptionEn;
   if (input.descriptionAr !== undefined) updates.descriptionAr = input.descriptionAr;
-  if (input.imageUrl !== undefined) updates.imageUrl = input.imageUrl;
   if (input.isActive !== undefined) updates.isActive = input.isActive;
   if (input.displayOrder !== undefined) updates.displayOrder = input.displayOrder;
 
@@ -1531,7 +1765,6 @@ export async function listAdminCollections(
       nameAr: collections.nameAr,
       descriptionEn: collections.descriptionEn,
       descriptionAr: collections.descriptionAr,
-      imageUrl: collections.imageUrl,
       isActive: collections.isActive,
       productCount: sql<number>`COUNT(${products.id})::int`,
       publishedProductCount: sql<number>`COUNT(${products.id}) FILTER (WHERE ${products.isPublished} = true)::int`,
@@ -1553,7 +1786,6 @@ export async function listAdminCollections(
     name_ar: row.nameAr,
     description_en: row.descriptionEn,
     description_ar: row.descriptionAr,
-    imageUrl: row.imageUrl,
     isActive: row.isActive,
     productCount: Number(row.productCount ?? 0),
     publishedProductCount: Number(row.publishedProductCount ?? 0),
@@ -1571,7 +1803,6 @@ export async function getAdminCollectionById(
       nameAr: collections.nameAr,
       descriptionEn: collections.descriptionEn,
       descriptionAr: collections.descriptionAr,
-      imageUrl: collections.imageUrl,
       isActive: collections.isActive,
     })
     .from(collections)
@@ -1634,7 +1865,6 @@ export async function getAdminCollectionById(
     name_ar: colRow.nameAr,
     description_en: colRow.descriptionEn,
     description_ar: colRow.descriptionAr,
-    imageUrl: colRow.imageUrl,
     isActive: colRow.isActive,
     productCount: associatedProducts.length,
     publishedProductCount: associatedProducts.filter((p) => p.isPublished).length,
@@ -1645,7 +1875,7 @@ export async function getAdminCollectionById(
 export async function createAdminCollection(
   input: CreateAdminCollectionInput
 ): Promise<AdminCollectionDetailDTO> {
-  const slug = resolveSlugOrThrow(input.slug, input.nameEn);
+  const slug = resolveSlugOrThrow(input.slug, input.nameEn, 160);
 
   const [dup] = await db
     .select({ id: collections.id })
@@ -1670,7 +1900,6 @@ export async function createAdminCollection(
         slug,
         descriptionEn: input.descriptionEn ?? null,
         descriptionAr: input.descriptionAr ?? null,
-        imageUrl: input.imageUrl ?? null,
         isActive: Boolean(input.isActive),
       })
       .returning({ id: collections.id });
@@ -1727,7 +1956,6 @@ export async function updateAdminCollection(
   if (input.slug !== undefined) updates.slug = input.slug;
   if (input.descriptionEn !== undefined) updates.descriptionEn = input.descriptionEn;
   if (input.descriptionAr !== undefined) updates.descriptionAr = input.descriptionAr;
-  if (input.imageUrl !== undefined) updates.imageUrl = input.imageUrl;
   if (input.isActive !== undefined) updates.isActive = input.isActive;
 
   try {
@@ -1770,46 +1998,38 @@ export async function addProductToCollection(
   collectionId: string,
   productId: string
 ): Promise<AdminCollectionDetailDTO> {
-  const [col] = await db
-    .select({ id: collections.id })
-    .from(collections)
-    .where(eq(collections.id, collectionId))
-    .limit(1);
-  if (!col) {
-    throw new AppError("Collection not found.", 404, "COLLECTION_NOT_FOUND");
-  }
-
-  const [prod] = await db
-    .select({ id: products.id })
-    .from(products)
-    .where(eq(products.id, productId))
-    .limit(1);
-  if (!prod) {
-    throw new AppError("Product not found.", 404, "PRODUCT_NOT_FOUND");
-  }
-
-  const [existingLink] = await db
-    .select({ productId: productCollections.productId })
-    .from(productCollections)
-    .where(
-      and(
-        eq(productCollections.collectionId, collectionId),
-        eq(productCollections.productId, productId)
-      )
-    )
-    .limit(1);
-
-  if (existingLink) {
-    throw new AppError(
-      "This product is already assigned to the collection.",
-      409,
-      "COLLECTION_PRODUCT_EXISTS"
-    );
-  }
-
   try {
-    await db.insert(productCollections).values({ collectionId, productId });
+    await db.transaction(async (tx) => {
+      const [collection] = await tx
+        .select({ id: collections.id, isActive: collections.isActive })
+        .from(collections)
+        .where(eq(collections.id, collectionId))
+        .for("update")
+        .limit(1);
+      if (!collection) {
+        throw new AppError("Collection not found.", 404, "COLLECTION_NOT_FOUND");
+      }
+      if (!collection.isActive) {
+        throw new AppError(
+          "Products cannot be added to an inactive collection.",
+          409,
+          "COLLECTION_INACTIVE"
+        );
+      }
+
+      const [product] = await tx
+        .select({ id: products.id })
+        .from(products)
+        .where(eq(products.id, productId))
+        .limit(1);
+      if (!product) {
+        throw new AppError("Product not found.", 404, "PRODUCT_NOT_FOUND");
+      }
+
+      await tx.insert(productCollections).values({ collectionId, productId });
+    });
   } catch (err) {
+    if (err instanceof AppError) throw err;
     if (getPgErrorCode(err) === "23505") {
       throw new AppError(
         "This product is already assigned to the collection.",

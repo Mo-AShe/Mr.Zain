@@ -105,13 +105,3 @@ export async function removeFromWishlist(productId) {
   notifyWishlistChange();
   return cachedWishlist;
 }
-
-export async function toggleWishlistItem(productId) {
-  const currentlyWishlisted = getCachedWishlistIds().has(productId);
-  if (currentlyWishlisted) {
-    const wishlist = await removeFromWishlist(productId);
-    return { added: false, wishlist };
-  }
-  const wishlist = await addToWishlist(productId);
-  return { added: true, wishlist };
-}

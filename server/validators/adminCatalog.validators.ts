@@ -1,7 +1,6 @@
 import { z } from "zod";
 
 const SLUG_REGEX = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
-const SKU_REGEX = /^[A-Za-z0-9][A-Za-z0-9_-]{1,99}$/;
 
 export function slugifyText(raw: string): string {
   return raw
@@ -11,20 +10,6 @@ export function slugifyText(raw: string): string {
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "")
     .slice(0, 200);
-}
-
-export function isValidImageUrl(raw: string): boolean {
-  const trimmed = raw.trim();
-  if (!trimmed || /\s/.test(trimmed)) return false;
-  if (trimmed.startsWith("/")) {
-    return /^\/[A-Za-z0-9/_\-.~%?&=+#]+$/.test(trimmed) && !trimmed.startsWith("//");
-  }
-  try {
-    const parsed = new URL(trimmed);
-    return parsed.protocol === "https:" || parsed.protocol === "http:";
-  } catch {
-    return false;
-  }
 }
 
 const optionalTrimmedString = (maxLen: number) =>
@@ -39,29 +24,6 @@ const optionalTrimmedString = (maxLen: number) =>
     z.string().max(maxLen).nullable().optional()
   );
 
-const optionalImageUrlSchema = z.preprocess(
-  (val) => {
-    if (val === undefined) return undefined;
-    if (val === null) return null;
-    if (typeof val !== "string") return val;
-    const trimmed = val.trim();
-    return trimmed === "" ? null : trimmed;
-  },
-  z
-    .string()
-    .max(2000)
-    .refine(isValidImageUrl, "Image URL must be a valid relative path (/...) or http(s) URL.")
-    .nullable()
-    .optional()
-);
-
-const requiredImageUrlSchema = z
-  .string({ error: "Image URL is required." })
-  .trim()
-  .min(1, "Image URL is required.")
-  .max(2000)
-  .refine(isValidImageUrl, "Image URL must be a valid relative path (/...) or http(s) URL.");
-
 const slugInputSchema = z.preprocess(
   (val) => {
     if (val === undefined || val === null) return undefined;
@@ -73,6 +35,21 @@ const slugInputSchema = z.preprocess(
     .string()
     .min(2, "Slug must be at least 2 characters.")
     .max(220, "Slug must be at most 220 characters.")
+    .regex(SLUG_REGEX, "Slug may only contain lowercase letters, numbers, and hyphens.")
+    .optional()
+);
+
+const taxonomySlugInputSchema = z.preprocess(
+  (val) => {
+    if (val === undefined || val === null) return undefined;
+    if (typeof val !== "string") return val;
+    const trimmed = val.trim().toLowerCase();
+    return trimmed === "" ? undefined : trimmed;
+  },
+  z
+    .string()
+    .min(2, "Slug must be at least 2 characters.")
+    .max(160, "Slug must be at most 160 characters.")
     .regex(SLUG_REGEX, "Slug may only contain lowercase letters, numbers, and hyphens.")
     .optional()
 );
@@ -104,6 +81,14 @@ export const imageParamsSchema = z.object({
   id: z.string().uuid("Invalid product identifier."),
   imageId: z.string().uuid("Invalid image identifier."),
 });
+
+export const stagedImageParamsSchema = z.object({
+  uploadId: z.string().uuid("Invalid staged image identifier."),
+});
+
+export const stagedProductImageSchema = z.object({
+  uploadId: z.string().uuid("Invalid staged image identifier."),
+}).strict();
 
 export const collectionProductParamsSchema = z.object({
   id: z.string().uuid("Invalid collection identifier."),
@@ -145,10 +130,44 @@ export const createAdminProductSchema = z
     descriptionAr: optionalTrimmedString(5000),
     basePrice: priceNumberSchema,
     compareAtPrice: optionalCompareAtPriceSchema,
+    imageUploadIds: z
+      .array(z.string().uuid("Invalid staged image ID."))
+      .min(1, "At least one product image is required.")
+      .max(10, "A product can have at most 10 images.")
+      .refine((ids) => new Set(ids).size === ids.length, "Duplicate image uploads are not allowed.")
+      .optional(),
+    imageUrls: z
+      .array(
+        z.string().url("Image URL must be a valid URL.").max(2000).refine(
+          (value) => {
+            try {
+              const url = new URL(value);
+              return url.protocol === "http:" || url.protocol === "https:";
+            } catch {
+              return false;
+            }
+          },
+          "Image URL must use HTTP or HTTPS."
+        )
+      )
+      .min(1, "At least one product image is required.")
+      .max(10, "A product can have at most 10 images.")
+      .refine((urls) => new Set(urls).size === urls.length, "Duplicate image URLs are not allowed.")
+      .optional(),
     isPublished: z.boolean().optional().default(false),
     isFeatured: z.boolean().optional().default(false),
-    isNew: z.boolean().optional().default(false),
-    isBestSeller: z.boolean().optional().default(false),
+  })
+  .strict()
+  .superRefine((data, ctx) => {
+    const hasUploads = Boolean(data.imageUploadIds?.length);
+    const hasUrls = Boolean(data.imageUrls?.length);
+    if (hasUploads === hasUrls) {
+      ctx.addIssue({
+        code: "custom",
+        message: "Choose either uploaded images or image URLs, not both.",
+        path: ["imageUrls"],
+      });
+    }
   })
   .refine(
     (data) =>
@@ -173,62 +192,38 @@ export const updateAdminProductSchema = z
     compareAtPrice: optionalCompareAtPriceSchema,
     isPublished: z.boolean().optional(),
     isFeatured: z.boolean().optional(),
-    isNew: z.boolean().optional(),
-    isBestSeller: z.boolean().optional(),
   })
+  .strict()
   .refine((data) => Object.keys(data).length > 0, {
     message: "At least one product field must be provided for update.",
   });
 
 export const createVariantSchema = z.object({
-  sku: z
-    .string({ error: "SKU is required." })
-    .trim()
-    .toUpperCase()
-    .regex(
-      SKU_REGEX,
-      "SKU must be 2–100 characters using letters, numbers, hyphens, or underscores."
-    ),
   size: z.string({ error: "Size is required." }).trim().min(1).max(40),
   color: z.string({ error: "Color is required." }).trim().min(1).max(60),
   price: priceNumberSchema.optional(),
   isActive: z.boolean().optional().default(true),
-});
+}).strict();
 
 export const updateVariantSchema = z
   .object({
-    sku: z
-      .string()
-      .trim()
-      .toUpperCase()
-      .regex(
-        SKU_REGEX,
-        "SKU must be 2–100 characters using letters, numbers, hyphens, or underscores."
-      )
-      .optional(),
     size: z.string().trim().min(1).max(40).optional(),
     color: z.string().trim().min(1).max(60).optional(),
     price: priceNumberSchema.optional(),
     isActive: z.boolean().optional(),
   })
+  .strict()
   .refine((data) => Object.keys(data).length > 0, {
     message: "At least one variant field must be provided for update.",
   });
 
-export const createProductImageSchema = z.object({
-  imageUrl: requiredImageUrlSchema,
-  altText: optionalTrimmedString(255),
-  displayOrder: z.coerce.number().int().min(0).max(10000).optional(),
-  isPrimary: z.boolean().optional().default(false),
-});
-
 export const updateProductImageSchema = z
   .object({
-    imageUrl: requiredImageUrlSchema.optional(),
     altText: optionalTrimmedString(255),
     displayOrder: z.coerce.number().int().min(0).max(10000).optional(),
     isPrimary: z.boolean().optional(),
   })
+  .strict()
   .refine((data) => Object.keys(data).length > 0, {
     message: "At least one image field must be provided for update.",
   });
@@ -250,25 +245,24 @@ export const adminCategoriesQuerySchema = z.object({
 export const createAdminCategorySchema = z.object({
   nameEn: z.string({ error: "English name is required." }).trim().min(2).max(150),
   nameAr: z.string({ error: "Arabic name is required." }).trim().min(2).max(150),
-  slug: slugInputSchema,
+  slug: taxonomySlugInputSchema,
   descriptionEn: optionalTrimmedString(2000),
   descriptionAr: optionalTrimmedString(2000),
-  imageUrl: optionalImageUrlSchema,
   isActive: z.boolean().optional().default(true),
   displayOrder: z.coerce.number().int().min(0).max(10000).optional().default(0),
-});
+}).strict();
 
 export const updateAdminCategorySchema = z
   .object({
     nameEn: z.string().trim().min(2).max(150).optional(),
     nameAr: z.string().trim().min(2).max(150).optional(),
-    slug: slugInputSchema,
+    slug: taxonomySlugInputSchema,
     descriptionEn: optionalTrimmedString(2000),
     descriptionAr: optionalTrimmedString(2000),
-    imageUrl: optionalImageUrlSchema,
     isActive: z.boolean().optional(),
     displayOrder: z.coerce.number().int().min(0).max(10000).optional(),
   })
+  .strict()
   .refine((data) => Object.keys(data).length > 0, {
     message: "At least one category field must be provided for update.",
   });
@@ -284,23 +278,22 @@ export const adminCollectionsQuerySchema = z.object({
 export const createAdminCollectionSchema = z.object({
   nameEn: z.string({ error: "English name is required." }).trim().min(2).max(150),
   nameAr: z.string({ error: "Arabic name is required." }).trim().min(2).max(150),
-  slug: slugInputSchema,
+  slug: taxonomySlugInputSchema,
   descriptionEn: optionalTrimmedString(2000),
   descriptionAr: optionalTrimmedString(2000),
-  imageUrl: optionalImageUrlSchema,
   isActive: z.boolean().optional().default(true),
-});
+}).strict();
 
 export const updateAdminCollectionSchema = z
   .object({
     nameEn: z.string().trim().min(2).max(150).optional(),
     nameAr: z.string().trim().min(2).max(150).optional(),
-    slug: slugInputSchema,
+    slug: taxonomySlugInputSchema,
     descriptionEn: optionalTrimmedString(2000),
     descriptionAr: optionalTrimmedString(2000),
-    imageUrl: optionalImageUrlSchema,
     isActive: z.boolean().optional(),
   })
+  .strict()
   .refine((data) => Object.keys(data).length > 0, {
     message: "At least one collection field must be provided for update.",
   });
@@ -314,7 +307,6 @@ export type CreateAdminProductInput = z.infer<typeof createAdminProductSchema>;
 export type UpdateAdminProductInput = z.infer<typeof updateAdminProductSchema>;
 export type CreateVariantInput = z.infer<typeof createVariantSchema>;
 export type UpdateVariantInput = z.infer<typeof updateVariantSchema>;
-export type CreateProductImageInput = z.infer<typeof createProductImageSchema>;
 export type UpdateProductImageInput = z.infer<typeof updateProductImageSchema>;
 export type AdminCategoriesQuery = z.infer<typeof adminCategoriesQuerySchema>;
 export type CreateAdminCategoryInput = z.infer<typeof createAdminCategorySchema>;

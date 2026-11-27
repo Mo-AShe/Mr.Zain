@@ -43,13 +43,11 @@ export const registerSchema = z
     phone: z.preprocess(
       (val) => normalizeEgyptianPhone(val),
       z
-        .string()
+        .string({ error: "Phone number is required." })
         .regex(
           /^\+201[0125]\d{8}$/,
           "Please enter a valid Egyptian mobile number (e.g. +20 100 123 4567 or 01001234567)."
         )
-        .nullable()
-        .optional()
     ),
   })
   .refine(
@@ -59,6 +57,32 @@ export const registerSchema = z
       path: ["confirmPassword"],
     }
   );
+
+export const updateCustomerProfileSchema = z
+  .object({
+    fullName: z
+      .string({ error: "Full name is required." })
+      .trim()
+      .min(2, "Full name must be at least 2 characters.")
+      .max(150, "Full name must be at most 150 characters."),
+    email: z
+      .string({ error: "Email address is required." })
+      .trim()
+      .toLowerCase()
+      .email("Please enter a valid email address.")
+      .max(255, "Email address must be at most 255 characters."),
+    phone: z.preprocess(
+      (val) => normalizeEgyptianPhone(val),
+      z
+        .string({ error: "Phone number is required." })
+        .regex(
+          /^\+201[0125]\d{8}$/,
+          "Please enter a valid Egyptian mobile number (e.g. +20 100 123 4567 or 01001234567)."
+        )
+    ),
+    currentPassword: z.string().max(128).optional(),
+  })
+  .strict();
 
 export const loginSchema = z.object({
   email: z
@@ -75,4 +99,5 @@ export const loginSchema = z.object({
 });
 
 export type RegisterInput = z.infer<typeof registerSchema>;
+export type UpdateCustomerProfileInput = z.infer<typeof updateCustomerProfileSchema>;
 export type LoginInput = z.infer<typeof loginSchema>;

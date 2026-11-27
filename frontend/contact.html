@@ -6,7 +6,7 @@
     <title>Contact — MR. ZAIN</title>
     <meta
       name="description"
-      content="Contact MR. ZAIN customer care for sizing, Egyptian governorate delivery, and capsule inquiries."
+      content="Contact MR. ZAIN customer care for order, sizing, and delivery support."
     />
 
     <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -33,119 +33,75 @@
       <section class="page-intro">
         <div class="container">
           <span class="section-kicker" data-i18n="contact.eyebrow">Client Care</span>
-          <h1 id="contact-page-title" class="page-intro__title" data-i18n="contact.title">Get in touch with MR. ZAIN</h1>
-          <p id="contact-page-subtitle" class="page-intro__subtitle" data-i18n="contact.subtitle">
-            Questions about sizing, Egyptian governorate delivery, or winter capsule releases? Reach out below.
+          <h1 class="page-intro__title" data-i18n="contact.title">Contact MR. ZAIN</h1>
+          <p class="page-intro__subtitle" data-i18n="contact.subtitle">
+            For help with your order, sizing, or delivery, reach our customer care team.
           </p>
         </div>
       </section>
 
-      <div class="container contact-grid">
-        <aside class="contact-info-card">
-          <h2 id="contact-info-heading" style="font-size: 1.25rem;" data-i18n="contact.infoHeading">Cairo Studio & Support</h2>
+      <section class="container contact-grid" aria-labelledby="contact-info-heading">
+        <article class="contact-info-card">
+          <h2 id="contact-info-heading" data-i18n="contact.infoHeading">Business Information</h2>
+          <div class="contact-info-list">
+            <div class="contact-info-item">
+              <span class="contact-info-item__icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7">
+                  <path d="M4 5h16v14H4z" />
+                  <path d="m4 7 8 6 8-6" />
+                </svg>
+              </span>
+              <div>
+                <span class="contact-info-item__label" data-i18n="footer.emailLabel">Email</span>
+                <a id="contact-email-val" href="mailto:care@mrzain.eg">care@mrzain.eg</a>
+              </div>
+            </div>
 
-          <div class="contact-info-item">
-            <span class="field__label" data-i18n="contact.emailLabel">Email</span>
-            <span id="contact-email-val">care@mrzain.eg</span>
+            <div class="contact-info-item" id="contact-whatsapp-item" hidden>
+              <span class="contact-info-item__icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7">
+                  <path d="M7 3h3l2 5-2.5 1.5a15 15 0 0 0 5 5L16 12l5 2v3c0 1.1-.9 2-2 2C10.7 19 5 13.3 5 5c0-1.1.9-2 2-2Z" />
+                </svg>
+              </span>
+              <div>
+                <span class="contact-info-item__label" data-i18n="footer.whatsappLabel">WhatsApp</span>
+                <div id="contact-whatsapp-links" class="contact-whatsapp-links"></div>
+              </div>
+            </div>
+
+            <div class="contact-info-item">
+              <span class="contact-info-item__icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7">
+                  <circle cx="12" cy="12" r="9" />
+                  <path d="M12 7v5l3 2" />
+                </svg>
+              </span>
+              <div>
+                <span class="contact-info-item__label" data-i18n="footer.hoursLabel">Working Hours</span>
+                <span id="contact-hours-val" data-i18n="footer.hoursValue">
+                  Saturday to Thursday: 8:00 AM – 8:00 PM. Friday: Closed.
+                </span>
+              </div>
+            </div>
+
+            <div class="contact-info-item">
+              <span class="contact-info-item__icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7">
+                  <path d="M19 10c0 5-7 11-7 11S5 15 5 10a7 7 0 1 1 14 0Z" />
+                  <circle cx="12" cy="10" r="2.2" />
+                </svg>
+              </span>
+              <div>
+                <span class="contact-info-item__label" data-i18n="footer.locationLabel">Location</span>
+                <span id="contact-location-val" data-i18n="footer.locationValue">Assiut, Egypt</span>
+              </div>
+            </div>
           </div>
-
-          <div class="contact-info-item">
-            <span class="field__label" data-i18n="contact.phoneLabel">WhatsApp / Phone</span>
-            <span id="contact-phone-val" class="tabular-nums" dir="ltr">+20 100 000 0000</span>
-          </div>
-
-          <div class="contact-info-item">
-            <span class="field__label" data-i18n="contact.hoursLabel">Support Hours</span>
-            <span id="contact-hours-val" class="text-muted" style="font-size: 0.875rem;" data-i18n="contact.hoursValue">
-              Saturday – Thursday, 10:00 AM – 8:00 PM (Cairo Time)
-            </span>
-          </div>
-
-          <div class="contact-info-item">
-            <span class="field__label" data-i18n="contact.locationLabel">Location</span>
-            <span id="contact-location-val" data-i18n="contact.locationValue">Cairo, Egypt</span>
-          </div>
-        </aside>
-
-        <section class="contact-form-card" aria-labelledby="contact-form-heading">
-          <h2 id="contact-form-heading" style="font-size: 1.25rem;" data-i18n="contact.formHeading">
-            Send a Message
-          </h2>
-
-          <div id="contact-status" class="form-status" hidden role="status"></div>
-
-          <form id="contact-form" novalidate style="display: flex; flex-direction: column; gap: 1rem;">
-            <div class="field">
-              <label for="contact-name" class="field__label" data-i18n="contact.fullName">Full Name</label>
-              <input
-                id="contact-name"
-                name="fullName"
-                type="text"
-                class="input"
-                data-i18n-placeholder="contact.fullNamePlaceholder"
-                placeholder="Karim Hassan"
-                required
-              />
-              <span id="err-contact-name" class="form-error"></span>
-            </div>
-
-            <div class="field">
-              <label for="contact-email" class="field__label" data-i18n="contact.email">Email Address</label>
-              <input
-                id="contact-email"
-                name="email"
-                type="email"
-                class="input"
-                data-i18n-placeholder="contact.emailPlaceholder"
-                placeholder="name@example.com"
-                required
-              />
-              <span id="err-contact-email" class="form-error"></span>
-            </div>
-
-            <div class="field">
-              <label for="contact-phone" class="field__label" data-i18n="contact.phone">
-                Egyptian Phone Number (+20)
-              </label>
-              <input
-                id="contact-phone"
-                name="phone"
-                type="tel"
-                class="input"
-                dir="ltr"
-                data-i18n-placeholder="contact.phonePlaceholder"
-                placeholder="+20 100 000 0000"
-                required
-              />
-              <span id="err-contact-phone" class="form-error"></span>
-            </div>
-
-            <div class="field">
-              <label for="contact-message" class="field__label" data-i18n="contact.message">Message</label>
-              <textarea
-                id="contact-message"
-                name="message"
-                rows="4"
-                class="input"
-                data-i18n-placeholder="contact.messagePlaceholder"
-                placeholder="How can we assist you?"
-                required
-              ></textarea>
-              <span id="err-contact-message" class="form-error"></span>
-            </div>
-
-            <div>
-              <button type="submit" class="btn btn--primary" data-i18n="contact.submit">
-                Send Message
-              </button>
-            </div>
-          </form>
-        </section>
-      </div>
+        </article>
+      </section>
     </main>
 
     <footer id="site-footer"></footer>
-
     <script type="module" src="/js/pages/contact.js"></script>
   </body>
 </html>

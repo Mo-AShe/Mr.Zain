@@ -769,6 +769,17 @@ function renderCurrentView() {
     activeSection: state.activeSection,
     onSelectSection: handleSectionSelect,
     onSignOut: signOutAdmin,
+    onAuthError: handleCatalogAuthError,
+    onOpenNotification: (orderId) => {
+      state.activeSection = "orders";
+      if (window.location.hash !== "#orders") {
+        window.history.replaceState(null, "", "#orders");
+      }
+      openAdminOrderDetailView(orderId, {
+        onAuthError: handleCatalogAuthError,
+        onRender: renderCurrentView,
+      });
+    },
   });
 
   if (!mainEl) return;

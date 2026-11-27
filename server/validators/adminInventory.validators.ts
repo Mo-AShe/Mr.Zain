@@ -1,5 +1,13 @@
 import { z } from "zod";
 
+const isoDateSchema = z
+  .string()
+  .regex(/^\d{4}-\d{2}-\d{2}$/, "Date must be YYYY-MM-DD.")
+  .refine((value) => {
+    const date = new Date(`${value}T00:00:00.000Z`);
+    return !Number.isNaN(date.getTime()) && date.toISOString().slice(0, 10) === value;
+  }, "Date must be a real calendar date.");
+
 export const inventoryVariantParamSchema = z.object({
   variantId: z.string().uuid("Invalid variant identifier."),
 });
@@ -18,7 +26,6 @@ export const adminInventoryQuerySchema = z.object({
       "available_asc",
       "available_desc",
       "updated_desc",
-      "sku_asc",
       "product_asc",
     ])
     .default("updated_desc"),
@@ -48,17 +55,11 @@ export const adminInventoryMovementsQuerySchema = z.object({
     .default("all"),
   startDate: z.preprocess(
     (v) => (typeof v === "string" ? v.trim() || undefined : undefined),
-    z
-      .string()
-      .regex(/^\d{4}-\d{2}-\d{2}$/, "Start date must be YYYY-MM-DD.")
-      .optional()
+    isoDateSchema.optional()
   ),
   endDate: z.preprocess(
     (v) => (typeof v === "string" ? v.trim() || undefined : undefined),
-    z
-      .string()
-      .regex(/^\d{4}-\d{2}-\d{2}$/, "End date must be YYYY-MM-DD.")
-      .optional()
+    isoDateSchema.optional()
   ),
   page: z.coerce.number().int().min(1).max(1000).default(1),
   limit: z.coerce.number().int().min(1).max(100).default(20),
@@ -79,7 +80,7 @@ export const createStockAdjustmentSchema = z
       .max(500, "Reason must be at most 500 characters."),
     idempotencyKey: z.preprocess(
       (v) => (typeof v === "string" ? v.trim() || undefined : undefined),
-      z.string().min(8).max(128).optional()
+      z.string({ error: "An idempotency key is required." }).min(8).max(128)
     ),
   })
   .refine(

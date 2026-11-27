@@ -9,6 +9,7 @@ import {
   websiteSettings,
 } from "../db/schema.js";
 import { getShippingSettings } from "./shipping.service.js";
+import { listAdminBanners } from "./adminBanners.service.js";
 import {
   POLICY_CONTENT_KEYS,
   type PolicyContentKey,
@@ -24,6 +25,9 @@ export interface StoreInfoDTO {
   contactEmail: string;
   contactPhone: string;
   whatsappNumber: string;
+  instagramUrl: string;
+  tiktokUrl: string;
+  facebookUrl: string;
   storeAddressEn: string;
   storeAddressAr: string;
   supportHoursEn: string;
@@ -64,16 +68,19 @@ export interface HomepageConfigDTO {
 const DEFAULT_STORE_INFO: StoreInfoDTO = {
   storeName: "MR. ZAIN",
   storeDescriptionEn:
-    "Minimalist heavyweight hoodies, brushed fleece sweatshirts, and structured winter outerwear designed in Cairo.",
+    "Minimalist heavyweight hoodies, brushed fleece sweatshirts, and structured winter outerwear designed in Assiut.",
   storeDescriptionAr:
     "تصاميم شتوية عصرية بسيطة بجودة عالية، مصممة لتناسب إطلالتك اليومية في مصر.",
   contactEmail: "care@mrzain.eg",
-  contactPhone: "+20 100 000 0000",
-  whatsappNumber: "+20 100 000 0000",
-  storeAddressEn: "Cairo, Egypt",
-  storeAddressAr: "القاهرة، مصر",
-  supportHoursEn: "Saturday – Thursday, 10:00 AM – 8:00 PM (Cairo Time)",
-  supportHoursAr: "السبت – الخميس، 10:00 صباحاً – 8:00 مساءً (بتوقيت القاهرة)",
+  contactPhone: "",
+  whatsappNumber: "",
+  instagramUrl: "",
+  tiktokUrl: "",
+  facebookUrl: "",
+  storeAddressEn: "Assiut, Egypt",
+  storeAddressAr: "أسيوط، مصر",
+  supportHoursEn: "Saturday to Thursday: 8:00 AM – 8:00 PM. Friday: Closed.",
+  supportHoursAr: "من السبت إلى الخميس: من 8 صباحًا حتى 8 مساءً. الجمعة: مغلق.",
   currency: "EGP",
 };
 
@@ -90,20 +97,20 @@ const DEFAULT_POLICIES: Record<
   { titleEn: string; titleAr: string; bodyEn: string; bodyAr: string }
 > = {
   about: {
-    titleEn: "Built in Cairo. Cut with quiet permanence.",
-    titleAr: "صُمم في القاهرة. بقصّة هادئة تدوم طويلاً.",
+    titleEn: "Built in Assiut. Cut with quiet permanence.",
+    titleAr: "صُمم في أسيوط. بقصّة هادئة تدوم طويلاً.",
     bodyEn:
       "MR. ZAIN began with a straightforward goal: heavyweight Egyptian cotton streetwear crafted with restraint, structured proportions, and durable stitching designed for Egyptian winters.",
     bodyAr:
       "بدأت علامة MR. ZAIN بهدف واضح: تقديم أزياء ستريت وير شتوية من القطن المصري الثقيل بتصاميم متزنة وقصّات متقنة تمنحك راحة وأناقة تدوم.",
   },
   contact: {
-    titleEn: "Cairo Studio & Client Care",
-    titleAr: "استوديو القاهرة وخدمة العملاء",
+    titleEn: "Assiut Client Care",
+    titleAr: "خدمة عملاء أسيوط",
     bodyEn:
-      "Reach out to our Cairo client care team for sizing advice, governorate delivery estimates, or Cash on Delivery order support.",
+      "Reach out to our client care team in Assiut for sizing advice, governorate delivery estimates, or Cash on Delivery order support.",
     bodyAr:
-      "تواصل مع فريق خدمة العملاء في القاهرة لأي استفسار حول المقاسات أو مواعيد التوصيل للمحافظات أو طلبات الدفع عند الاستلام.",
+      "تواصل مع فريق خدمة العملاء في أسيوط لأي استفسار حول المقاسات أو مواعيد التوصيل للمحافظات أو طلبات الدفع عند الاستلام.",
   },
   shipping_policy: {
     titleEn: "Shipping & Delivery Policy",
@@ -143,8 +150,8 @@ const DEFAULT_HOMEPAGE: HomepageConfigDTO = {
   announcementEnabled: true,
   announcementBadgeEn: "Egypt Delivery",
   announcementBadgeAr: "التوصيل في مصر",
-  announcementTextEn: "Free delivery on orders above 2,500 EGP across governorates.",
-  announcementTextAr: "توصيل مجاني للطلبات فوق 2,500 جنيه مصري لجميع المحافظات.",
+  announcementTextEn: "Delivery available across all Egyptian governorates.",
+  announcementTextAr: "التوصيل متاح لجميع محافظات مصر.",
   promoBannerEnabled: true,
   promoBannerTitleEn: "Engineered for cold Cairo nights.",
   promoBannerTitleAr: "مصممة لليالي القاهرة الباردة.",
@@ -217,6 +224,9 @@ function buildStoreInfoFromMap(map: Map<string, string>): StoreInfoDTO {
     contactPhone: map.get("store.contact_phone") ?? DEFAULT_STORE_INFO.contactPhone,
     whatsappNumber:
       map.get("store.whatsapp_number") ?? DEFAULT_STORE_INFO.whatsappNumber,
+    instagramUrl: map.get("store.instagram_url") ?? DEFAULT_STORE_INFO.instagramUrl,
+    tiktokUrl: map.get("store.tiktok_url") ?? DEFAULT_STORE_INFO.tiktokUrl,
+    facebookUrl: map.get("store.facebook_url") ?? DEFAULT_STORE_INFO.facebookUrl,
     storeAddressEn:
       map.get("store.address_en") ?? DEFAULT_STORE_INFO.storeAddressEn,
     storeAddressAr:
@@ -367,6 +377,7 @@ export async function getAdminSettingsOverview() {
     bannerRows,
     availableCollections,
     availableProducts,
+    allBanners,
   ] = await Promise.all([
     readSettingsMap(),
     readPoliciesList(),
@@ -404,6 +415,7 @@ export async function getAdminSettingsOverview() {
       .innerJoin(categories, eq(categories.id, products.categoryId))
       .orderBy(desc(products.createdAt))
       .limit(200),
+    listAdminBanners(),
   ]);
 
   return {
@@ -414,6 +426,7 @@ export async function getAdminSettingsOverview() {
     shippingSummary,
     availableCollections,
     availableProducts,
+    banners: allBanners,
   };
 }
 
@@ -435,6 +448,12 @@ export async function updateAdminGeneralSettings(
       settingPairs.push(["store.contact_phone", s.contactPhone]);
     if (s.whatsappNumber !== undefined)
       settingPairs.push(["store.whatsapp_number", s.whatsappNumber]);
+    if (s.instagramUrl !== undefined)
+      settingPairs.push(["store.instagram_url", s.instagramUrl]);
+    if (s.tiktokUrl !== undefined)
+      settingPairs.push(["store.tiktok_url", s.tiktokUrl]);
+    if (s.facebookUrl !== undefined)
+      settingPairs.push(["store.facebook_url", s.facebookUrl]);
     if (s.storeAddressEn !== undefined)
       settingPairs.push(["store.address_en", s.storeAddressEn]);
     if (s.storeAddressAr !== undefined)

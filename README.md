@@ -1,61 +1,63 @@
-# MR. ZAIN — Egyptian Clothing E-Commerce Platform
+# MR. ZAIN — E-commerce Platform
 
-A full-stack e-commerce platform for **MR. ZAIN**, an Egyptian clothing brand offering contemporary menswear, womenswear, and traditional-inspired Egyptian cotton collections.
+MR. ZAIN is an Egyptian clothing storefront and admin console. The active application is a same-origin Express API and static frontend backed by Neon PostgreSQL.
 
-## Technology Stack
+## Technology
 
-- **Frontend:** HTML5, CSS3, Vanilla JavaScript (`frontend/`)
-- **Backend:** Python, FastAPI (`backend/`)
-- **Database:** PostgreSQL (`database/`)
-- **Documentation:** Architecture, API specs, and ERD (`docs/`)
+- **API/server:** Node.js, Express, and TypeScript (`server.ts`, `server/`)
+- **Database:** Neon PostgreSQL using Drizzle ORM; schema and SQL migrations are in `server/db/`
+- **Frontend:** Vanilla JavaScript ES modules, HTML, and CSS in `frontend/`
+- **Authentication:** HttpOnly session cookies and a double-submit CSRF cookie/header
+- **Tests and type-check:** Node's test runner with `tsx`; TypeScript check via `npm run lint`
 
-## Project Structure
+The legacy `/backend` (FastAPI) and `/database` trees are retained for reference only. They are not used by the active app; do not use their migrations, seed scripts, or API as the source of truth. The active database schema is `server/db/schema.ts`, and the active migrations are `server/db/migrations/`.
+
+## Project layout
 
 ```text
 .
-├── README.md
-├── .gitignore
-├── frontend/               # Pure HTML5, CSS3 & Vanilla JS (Customer Storefront + Admin Portal)
-│   ├── index.html
-│   ├── pages/              # Customer-facing pages (shop, product, cart, checkout, auth, account)
-│   ├── admin/              # Admin dashboard & management pages
-│   ├── css/                # Modular stylesheets & design tokens
-│   ├── js/                 # Config, API client, utilities, components, page controllers
-│   └── assets/             # Brand logo, icons, and static imagery
-├── backend/                # Pure Python FastAPI application
-│   ├── requirements.txt
-│   ├── .env.example
-│   ├── alembic.ini
-│   ├── app/
-│   │   ├── main.py         # FastAPI application entrypoint
-│   │   ├── core/           # Configuration, database session, security, dependencies
-│   │   ├── models/         # SQLAlchemy ORM models
-│   │   ├── schemas/        # Pydantic request/response schemas
-│   │   ├── api/            # Versioned REST API routes
-│   │   └── services/       # Business logic & payment/shipping services
-│   └── tests/              # Automated backend tests
-├── database/               # PostgreSQL schemas, migrations, and seed data
-│   ├── schema.sql
-│   ├── migrations/
-│   └── seeds/
-└── docs/                   # System architecture, API specification, and database ERD
+├── frontend/               # Storefront and /admin/index.html single-page console
+│   ├── admin/              # Admin entry/redirect pages
+│   ├── css/
+│   ├── js/
+│   └── pages/              # Customer pages, including shared authentication
+├── server/                 # Express API implementation
+│   ├── db/                 # Drizzle schema, migrations, and seed
+│   ├── middleware/
+│   ├── routes/v1/
+│   ├── services/
+│   └── validators/
+├── server.ts               # Express entry point; serves frontend and /api/v1
+└── docs/
 ```
 
-## Quick Start (Planned Setup)
+## Run locally
 
-### 1. Database (PostgreSQL)
-1. Create a PostgreSQL database (e.g., `mr_zain_db`).
-2. Apply migrations / baseline schema from `database/schema.sql` and seeds from `database/seeds/`.
+1. Use Node.js and npm versions that support the versions in `package.json`.
+2. Create a Neon PostgreSQL database and configure `DATABASE_URL` with its SSL connection string. Configure `SESSION_SECRET` and `JWT_SECRET` as server-only secrets; replace all sample values before running the app.
+3. Install dependencies and apply the active Drizzle migrations:
 
-### 2. Backend (FastAPI)
+   ```bash
+   npm ci
+   npm run db:migrate
+   ```
+
+4. Start the server:
+
+   ```bash
+   npm run dev
+   ```
+
+   The Express server serves the `frontend/` directory and API from the same origin. Open `http://localhost:3000/`; the admin console is at `http://localhost:3000/admin/index.html`.
+
+Create the first administrator with `npm run admin:bootstrap` and the server-side `ADMIN_EMAIL`, `ADMIN_FULL_NAME`, and `ADMIN_PASSWORD` environment variables. See [docs/admin-setup.md](docs/admin-setup.md).
+
+## Development checks
+
 ```bash
-cd backend
-python -m venv .venv
-source .venv/bin/activate  # On Windows: .venv\Scripts\activate
-pip install -r requirements.txt
-cp .env.example .env
-uvicorn app.main:app --reload --port 8000
+npm run lint
+npm test
+npm run build
 ```
 
-### 3. Frontend (Static HTML/CSS/JS)
-Serve the `frontend/` directory using any static file server (e.g., Live Server, `python -m http.server 5500`, or Nginx) and configure `API_BASE_URL` in `frontend/js/config.js`.
+API endpoints are under `/api/v1`; see [docs/api-specification.md](docs/api-specification.md). Architecture and data model notes are in [docs/architecture.md](docs/architecture.md) and [docs/database-erd.md](docs/database-erd.md).

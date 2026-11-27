@@ -4,6 +4,9 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>MR. ZAIN — Minimalist Egyptian Streetwear</title>
+    <link rel="icon" type="image/x-icon" href="/assets/icons/favicon.ico" sizes="any" />
+    <link rel="icon" type="image/png" sizes="32x32" href="/assets/icons/favicon-32x32.png" />
+    <link rel="apple-touch-icon" sizes="180x180" href="/assets/icons/apple-touch-icon.png" />
     <meta
       name="description"
       content="MR. ZAIN — Premium minimalist streetwear hoodies, sweatshirts, and winter outerwear designed for Egypt."
@@ -67,21 +70,17 @@
             </div>
           </div>
 
-          <div class="hero__visual">
+          <div class="hero__visual" id="home-hero-visual">
             <div class="hero__visual-frame">
               <img
-                src="/assets/images/mr-zain-logo.png"
-                alt="MR. ZAIN"
-                style="height: 84px; width: auto; mix-blend-mode: multiply;"
-                referrerPolicy="no-referrer"
+                id="home-hero-image"
+                class="hero__image"
+                alt=""
+                hidden
               />
-              <span class="text-muted" style="font-size: 0.875rem;" data-i18n="home.heroVisualNote">
-                Replaceable full-bleed campaign photography slot
-              </span>
             </div>
             <div class="hero__visual-caption">
-              <span data-i18n="home.heroVisualLabel">Winter 26 Studio Campaign</span>
-              <span class="tabular-nums">CAIRO / 26</span>
+              <span data-i18n="home.heroVisualLabel">Selected from the collection</span>
             </div>
           </div>
         </div>
@@ -185,7 +184,7 @@
               <span class="story-item__index">02</span>
               <h3 class="story-item__title" data-i18n="home.story2Title">Bilingual by Default</h3>
               <p class="story-item__text" data-i18n="home.story2Desc">
-                Crafted in Cairo for Egypt, with seamless Arabic RTL and English LTR experiences.
+                Crafted in Assiut for Egypt, with seamless Arabic RTL and English LTR experiences.
               </p>
             </article>
 
@@ -204,66 +203,24 @@
       <section class="editorial-banner" aria-labelledby="promo-banner-heading">
         <div class="container editorial-banner__grid">
           <div>
-            <span class="editorial-banner__kicker">
-              <span class="gold-rule" aria-hidden="true"></span>
-              <span data-i18n="home.bannerKicker">Limited Outerwear Drop</span>
-            </span>
             <h2 id="promo-banner-heading" class="editorial-banner__title" data-i18n="home.bannerTitle">
               Engineered for cold Cairo nights.
             </h2>
             <p class="editorial-banner__desc" data-i18n="home.bannerDesc">
               Structured wool-blend overshirts and quilted winter jackets available across limited seasonal runs.
             </p>
-            <a href="/shop.html?category=jackets" class="btn btn--gold" data-i18n="home.bannerCta">
-              Shop Outerwear
-            </a>
+            <div id="promo-banner-controls" class="editorial-banner__controls" role="group" hidden></div>
           </div>
 
           <div class="editorial-banner__frame">
-            <svg width="44" height="44" viewBox="0 0 80 80" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true">
-              <path d="M29 14h22l13 8-4 17-6-2v29H26V37l-6 2-4-17 13-8Z" />
-              <path d="M29 14l6 8h10l6-8" />
-              <path d="M40 22v44" />
-            </svg>
-            <span data-i18n="home.bannerVisualNote">Replaceable editorial banner frame (16:9)</span>
+            <span class="editorial-banner__frame-label" aria-hidden="true">MR. ZAIN</span>
           </div>
         </div>
       </section>
 
-      <!-- 10. Newsletter Subscription Section -->
-      <section class="newsletter-strip" aria-labelledby="home-newsletter-heading">
-        <div class="container newsletter-strip__inner">
-          <div>
-            <span class="section-kicker" data-i18n="home.newsletterKicker">Private Dispatch</span>
-            <h2 id="home-newsletter-heading" data-i18n="home.newsletterTitle">
-              Early access to every capsule.
-            </h2>
-            <p class="section-subtitle" data-i18n="home.newsletterDesc">
-              Join our Cairo dispatch list for first access to restocks and seasonal drops.
-            </p>
-          </div>
-
-          <form class="newsletter-strip__form" id="home-newsletter-form" novalidate>
-            <label for="home-newsletter-email" class="sr-only" data-i18n="footer.newsletterPlaceholder">
-              Enter your email address
-            </label>
-            <input
-              type="email"
-              id="home-newsletter-email"
-              class="input"
-              data-i18n-placeholder="footer.newsletterPlaceholder"
-              placeholder="Enter your email address"
-              required
-            />
-            <button type="submit" class="btn btn--primary" data-i18n="footer.newsletterSubmit">
-              Subscribe
-            </button>
-          </form>
-        </div>
-      </section>
     </main>
 
-    <!-- 11. Shared Footer -->
+    <!-- 10. Shared Footer -->
     <footer id="site-footer"></footer>
 
     <script type="module" src="/js/pages/home.js"></script>

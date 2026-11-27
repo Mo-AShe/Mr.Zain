@@ -25,6 +25,7 @@ import { getLanguage, t } from "../i18n/i18n.js";
 import { deleteAddress } from "../services/address-service.js";
 import { redirectToAuth, requireCustomerAuth } from "../services/auth-service.js";
 import { clearCartState, fetchCart } from "../services/cart-service.js";
+import { getCachedPublicSettings } from "../services/settings-service.js";
 import {
   fetchCheckoutPreview,
   fetchShippingQuote,
@@ -49,12 +50,42 @@ let stockConflictMessage = "";
 let isQuoting = false;
 let isSubmitting = false;
 let checkoutIdempotencyKey = generateIdempotencyKey();
+const couponRejectionCodes = new Set([
+  "INVALID_COUPON",
+  "COUPON_NOT_STARTED",
+  "COUPON_EXPIRED",
+  "COUPON_MIN_ORDER_NOT_MET",
+  "COUPON_USAGE_LIMIT_REACHED",
+  "COUPON_CUSTOMER_LIMIT_REACHED",
+]);
+
+function isValidEgyptianPhone(raw) {
+  const cleaned = String(raw || "").replace(/[\s\-().]/g, "").trim();
+  return /^(?:\+20|20|0)1[0125]\d{8}$/.test(cleaned);
+}
+
+function hasCompleteDeliveryAddress(address) {
+  return Boolean(
+    address &&
+      address.recipientName?.trim() &&
+      isValidEgyptianPhone(address.phone) &&
+      address.governorate?.trim() &&
+      address.city?.trim() &&
+      address.street?.trim() &&
+      address.building?.trim()
+  );
+}
 
 function generateIdempotencyKey() {
   if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
     return crypto.randomUUID();
   }
   return `mz-${Date.now()}-${Math.random().toString(36).slice(2, 14)}`;
+}
+
+function rotateCheckoutIdempotencyKey() {
+  // Keep the key for network/5xx outcomes that may have committed; rotate when order inputs change or stale inputs are rejected.
+  checkoutIdempotencyKey = generateIdempotencyKey();
 }
 
 function getSelectedAddress() {
@@ -67,6 +98,7 @@ function buildCheckoutRenderState() {
   const summary = previewData?.summary || {};
   const shipping = previewData?.shipping || null;
   const settings = previewData?.shippingSettings || {};
+  const publicShipping = getCachedPublicSettings()?.shipping;
   const subtotal = Number(summary.subtotal ?? previewData?.cart?.subtotal ?? 0);
   const discountAmount = Number(summary.discountAmount ?? 0);
   const shippingFee =
@@ -76,9 +108,11 @@ function buildCheckoutRenderState() {
         ? Number(summary.shippingFee)
         : null;
   const totalAmount = Number(summary.totalAmount ?? Math.max(0, subtotal - discountAmount));
-  const freeShippingThreshold = Number(
-    settings.freeShippingThreshold ?? summary.freeShippingThreshold ?? 2500
-  );
+  const freeShippingThreshold =
+    publicShipping?.freeShippingThreshold ??
+    settings.freeShippingThreshold ??
+    summary.freeShippingThreshold ??
+    null;
   const isFreeShippingEnabled = Boolean(settings.isFreeShippingEnabled ?? true);
   const qualifiesForFreeShipping = Boolean(summary.qualifiesForFreeShipping);
   const amountToFreeShipping = Number(summary.amountToFreeShipping ?? 0);
@@ -195,7 +229,11 @@ async function loadCheckoutPage({ preserveSelection = true } = {}) {
 
     if (data?.couponError) {
       couponInlineError = data.couponError;
+      if (appliedCouponCode) {
+        rotateCheckoutIdempotencyKey();
+      }
       appliedCouponCode = "";
+      couponInputDraft = "";
     } else if (data?.appliedCoupon?.code) {
       appliedCouponCode = data.appliedCoupon.code;
       couponInputDraft = appliedCouponCode;
@@ -281,6 +319,20 @@ function renderCheckoutView() {
                       }
                     </div>
                     <p class="checkout-address-card__phone tabular-nums" dir="ltr">${escapeHtml(addr.phone)}</p>
+                    ${
+                      isValidEgyptianPhone(addr.phone)
+                        ? ""
+                        : `<p class="form-error" role="alert">${escapeHtml(t("checkout.invalidAddressPhone", lang))}</p>`
+                    }
+                    ${
+                      addr.recipientName?.trim() &&
+                      addr.governorate?.trim() &&
+                      addr.city?.trim() &&
+                      addr.street?.trim() &&
+                      addr.building?.trim()
+                        ? ""
+                        : `<p class="form-error" role="alert">${escapeHtml(t("checkout.incompleteAddress", lang))}</p>`
+                    }
                     <p class="checkout-address-card__lines">${lines.map(escapeHtml).join("<br />")}</p>
                     ${
                       addr.additionalInformation
@@ -314,7 +366,7 @@ function renderCheckoutView() {
     !isSubmitting &&
     !isQuoting &&
     !isMaintenanceMode &&
-    Boolean(selectedAddress) &&
+    hasCompleteDeliveryAddress(selectedAddress) &&
     !hasStockIssues &&
     isCodEnabled;
 
@@ -590,7 +642,9 @@ function renderCheckoutView() {
       ${
         item.exceedsStock
           ? `<p class="cart-item__stock cart-item__stock--error">${escapeHtml(
-              item.availableStock <= 0
+              !item.isAvailable
+                ? t("cart.productUnavailable", lang)
+                : item.availableStock <= 0
                 ? t("cart.outOfStockWarning", lang)
                 : t("cart.exceedsStockWarning", lang).replace("{count}", String(item.availableStock))
             )}</p>`
@@ -616,6 +670,7 @@ function bindCheckoutEvents() {
     radio.addEventListener("change", () => {
       if (radio.checked && radio.value !== selectedAddressId) {
         selectedAddressId = radio.value;
+        rotateCheckoutIdempotencyKey();
         refreshQuoteForSelection();
       }
     });
@@ -628,6 +683,7 @@ function bindCheckoutEvents() {
       defaultPhone: activeUser?.phone || "",
       onSaved: async (saved) => {
         if (saved?.id) selectedAddressId = saved.id;
+        rotateCheckoutIdempotencyKey();
         await loadCheckoutPage({ preserveSelection: true });
       },
     });
@@ -642,6 +698,7 @@ function bindCheckoutEvents() {
         governorates,
         onSaved: async (saved) => {
           if (saved?.id) selectedAddressId = saved.id;
+          rotateCheckoutIdempotencyKey();
           await loadCheckoutPage({ preserveSelection: true });
         },
       });
@@ -661,6 +718,7 @@ function bindCheckoutEvents() {
         onConfirm: async () => {
           try {
             await deleteAddress(addrId);
+            rotateCheckoutIdempotencyKey();
             showToast(t("address.deletedSuccess", getLanguage()), "info");
             if (selectedAddressId === addrId) {
               selectedAddressId = null;
@@ -696,10 +754,16 @@ function bindCheckoutEvents() {
       showToast(t("checkout.selectAddressRequired", getLanguage()), "warning");
       return;
     }
+    if (code !== appliedCouponCode) {
+      rotateCheckoutIdempotencyKey();
+    }
     await refreshQuoteForSelection({ couponOverride: code });
   });
 
   document.getElementById("checkout-remove-coupon-btn")?.addEventListener("click", async () => {
+    if (appliedCouponCode) {
+      rotateCheckoutIdempotencyKey();
+    }
     appliedCouponCode = "";
     couponInputDraft = "";
     couponInlineError = "";
@@ -722,12 +786,22 @@ async function handlePlaceOrder() {
     showToast(t("checkout.selectAddressRequired", lang), "warning");
     return;
   }
+  if (!hasCompleteDeliveryAddress(getSelectedAddress())) {
+    const address = getSelectedAddress();
+    showToast(
+      address && isValidEgyptianPhone(address.phone)
+        ? t("checkout.incompleteAddress", lang)
+        : t("checkout.invalidAddressPhone", lang),
+      "error"
+    );
+    return;
+  }
 
   isSubmitting = true;
   stockConflictMessage = "";
-  renderCheckoutView();
 
   try {
+    renderCheckoutView();
     const response = await placeCodOrder({
       addressId: selectedAddressId,
       ...(appliedCouponCode ? { couponCode: appliedCouponCode } : {}),
@@ -762,6 +836,29 @@ async function handlePlaceOrder() {
     if (code === "STORE_MAINTENANCE") {
       await loadCheckoutPage({ preserveSelection: true });
       showToast(err?.message || t("checkout.maintenanceAlert", getLanguage()), "error", 5000);
+    } else if (couponRejectionCodes.has(code)) {
+      const message = err?.message || t("ui.actionFailed", getLanguage());
+      appliedCouponCode = "";
+      couponInputDraft = "";
+      rotateCheckoutIdempotencyKey();
+      await loadCheckoutPage({ preserveSelection: true });
+      couponInlineError = message;
+      renderCheckoutView();
+    } else if (code === "COD_DISABLED" || code === "ADDRESS_NOT_FOUND") {
+      rotateCheckoutIdempotencyKey();
+      if (code === "ADDRESS_NOT_FOUND") {
+        selectedAddressId = null;
+      }
+      await loadCheckoutPage({
+        preserveSelection: code !== "ADDRESS_NOT_FOUND",
+      });
+      showToast(
+        code === "COD_DISABLED"
+          ? t("checkout.codDisabledAlert", getLanguage())
+          : t("checkout.addressUnavailableAlert", getLanguage()),
+        "error",
+        4500
+      );
     } else if (
       code === "INSUFFICIENT_STOCK" ||
       code === "OUT_OF_STOCK" ||
@@ -770,10 +867,30 @@ async function handlePlaceOrder() {
       code === "CART_EMPTY"
     ) {
       stockConflictMessage = err?.message || t("checkout.stockChangedAlert", getLanguage());
-      checkoutIdempotencyKey = generateIdempotencyKey();
+      rotateCheckoutIdempotencyKey();
       await loadCheckoutPage({ preserveSelection: true });
       showToast(stockConflictMessage, "error", 4500);
+    } else if (code === "ADDRESS_INCOMPLETE" || code === "PHONE_REQUIRED") {
+      await loadCheckoutPage({ preserveSelection: true });
+      showToast(
+        code === "ADDRESS_INCOMPLETE"
+          ? t("checkout.incompleteAddress", getLanguage())
+          : t("checkout.invalidAddressPhone", getLanguage()),
+        "error"
+      );
+    } else if (code === "VALIDATION_ERROR" || (err?.status === 422 && Array.isArray(err?.details))) {
+      const firstFieldError = Array.isArray(err?.details)
+        ? err.details.find((detail) => detail?.message)
+        : null;
+      showToast(
+        firstFieldError?.message || err?.message || t("ui.actionFailed", getLanguage()),
+        "error",
+        4500
+      );
+    } else if (err?.status === 403 && err?.code === "FORBIDDEN") {
+      showToast(t("ui.customerOnlyAction", getLanguage()), "error", 4500);
     } else {
+      // No response status means the order outcome is unknown; retry with the same idempotency key.
       showToast(err?.message || t("ui.actionFailed", getLanguage()), "error", 4500);
     }
   } finally {
@@ -795,4 +912,5 @@ document.addEventListener("DOMContentLoaded", async () => {
   await loadCheckoutPage({ preserveSelection: false });
 
   window.addEventListener("zain:langchange", renderCheckoutView);
+  window.addEventListener("zain:settingsloaded", renderCheckoutView);
 });

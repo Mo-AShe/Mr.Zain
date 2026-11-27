@@ -4,14 +4,34 @@
 
 import { getLanguage, t } from "../i18n/i18n.js";
 import { getCachedPublicSettings } from "../services/settings-service.js";
-import { escapeHtml } from "../utils/formatters.js";
-import { showToast } from "./ui.js";
+import { escapeHtml, parsePhoneNumbers } from "../utils/formatters.js";
 
 export function renderFooter(container) {
   if (!container) return;
 
   const lang = getLanguage();
   const storeInfo = getCachedPublicSettings()?.storeInfo;
+  const storeName = storeInfo?.storeName?.trim() || "MR. ZAIN";
+  const contactEmail = storeInfo?.contactEmail || "care@mrzain.eg";
+  const whatsappNumbers = parsePhoneNumbers(
+    (storeInfo?.whatsappNumber || "").trim() ||
+      (storeInfo?.contactPhone || "").trim()
+  );
+  const socialLinks = [
+    { label: "Instagram", url: storeInfo?.instagramUrl },
+    { label: "TikTok", url: storeInfo?.tiktokUrl },
+    { label: "Facebook", url: storeInfo?.facebookUrl },
+  ].filter((link) => Boolean(link.url?.trim()));
+  const supportHours =
+    (lang === "ar"
+      ? storeInfo?.supportHoursAr || storeInfo?.supportHoursEn
+      : storeInfo?.supportHoursEn || storeInfo?.supportHoursAr) ||
+    t("footer.hoursValue", lang);
+  const location =
+    (lang === "ar"
+      ? storeInfo?.storeAddressAr || storeInfo?.storeAddressEn
+      : storeInfo?.storeAddressEn || storeInfo?.storeAddressAr) ||
+    t("footer.locationValue", lang);
   const brandDesc =
     (storeInfo
       ? lang === "ar"
@@ -24,17 +44,28 @@ export function renderFooter(container) {
     <div class="container">
       <div class="footer-grid">
         <div>
-          <a href="/index.html" class="footer-brand-box" aria-label="MR. ZAIN">
-            <img src="/assets/images/mr-zain-logo.png" alt="MR. ZAIN" referrerPolicy="no-referrer" />
+          <a href="/index.html" class="footer-brand-box" aria-label="${escapeHtml(storeName)}">
+            <img
+              src="/assets/images/logo-removebg-preview.png"
+              alt="${escapeHtml(storeName)}"
+              referrerpolicy="no-referrer"
+            />
           </a>
           <p class="footer-description">${escapeHtml(brandDesc)}</p>
-          <div class="footer-socials">
-            <a href="#instagram" aria-label="Instagram">Instagram</a>
-            <span aria-hidden="true">·</span>
-            <a href="#tiktok" aria-label="TikTok">TikTok</a>
-            <span aria-hidden="true">·</span>
-            <a href="#facebook" aria-label="Facebook">Facebook</a>
-          </div>
+          ${
+            socialLinks.length
+              ? `<div class="footer-socials">
+                  ${socialLinks
+                    .map(
+                      (link, index) => `
+                        ${index > 0 ? '<span aria-hidden="true">·</span>' : ""}
+                        <a href="${escapeHtml(link.url)}" aria-label="${escapeHtml(link.label)}" target="_blank" rel="noopener noreferrer">${escapeHtml(link.label)}</a>
+                      `
+                    )
+                    .join("")}
+                </div>`
+              : ""
+          }
         </div>
 
         <div>
@@ -51,28 +82,41 @@ export function renderFooter(container) {
           <h2 class="footer-heading">${escapeHtml(t("footer.aboutHeading", lang))}</h2>
           <ul class="footer-links">
             <li><a href="/about.html">${escapeHtml(t("footer.ourStory", lang))}</a></li>
+            <li><a href="/contact.html">${escapeHtml(t("footer.contactPage", lang))}</a></li>
             <li><a href="/collections.html">${escapeHtml(t("footer.craftsmanship", lang))}</a></li>
-            <li><a href="/contact.html">${escapeHtml(t("footer.contactUs", lang))}</a></li>
             <li><a href="/about.html#store-policies">${escapeHtml(t("footer.privacyPolicy", lang))}</a></li>
           </ul>
         </div>
 
         <div>
-          <h2 class="footer-heading">${escapeHtml(t("footer.newsletterHeading", lang))}</h2>
-          <p class="footer-newsletter-text">${escapeHtml(t("footer.newsletterDesc", lang))}</p>
-          <form class="footer-newsletter-form" id="zain-newsletter-form" novalidate>
-            <label for="zain-newsletter-email" class="sr-only">${escapeHtml(t("footer.newsletterPlaceholder", lang))}</label>
-            <input
-              type="email"
-              id="zain-newsletter-email"
-              class="footer-newsletter-input"
-              placeholder="${escapeHtml(t("footer.newsletterPlaceholder", lang))}"
-              required
-            />
-            <button type="submit" class="btn btn--gold btn--sm">
-              ${escapeHtml(t("footer.newsletterSubmit", lang))}
-            </button>
-          </form>
+          <h2 class="footer-heading">${escapeHtml(t("footer.contactHeading", lang))}</h2>
+          <div class="footer-contact-list">
+            <div class="footer-contact-item">
+              <span class="footer-contact-label">${escapeHtml(t("footer.emailLabel", lang))}</span>
+              <a class="footer-contact-value" href="mailto:${escapeHtml(contactEmail)}">${escapeHtml(contactEmail)}</a>
+            </div>
+            ${
+              whatsappNumbers.length
+                ? `<div class="footer-contact-item">
+                    <span class="footer-contact-label">${escapeHtml(t("footer.whatsappLabel", lang))}</span>
+                    ${whatsappNumbers
+                      .map(
+                        ({ number, digits }) =>
+                          `<a class="footer-contact-value" href="https://wa.me/${escapeHtml(digits)}" aria-label="${escapeHtml(t("footer.chatOnWhatsApp", lang))}: ${escapeHtml(number)}" target="_blank" rel="noopener noreferrer">${escapeHtml(number)}</a>`
+                      )
+                      .join("")}
+                  </div>`
+                : ""
+            }
+            <div class="footer-contact-item">
+              <span class="footer-contact-label">${escapeHtml(t("footer.hoursLabel", lang))}</span>
+              <span class="footer-contact-value">${escapeHtml(supportHours)}</span>
+            </div>
+            <div class="footer-contact-item">
+              <span class="footer-contact-label">${escapeHtml(t("footer.locationLabel", lang))}</span>
+              <span class="footer-contact-value">${escapeHtml(location)}</span>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -82,20 +126,4 @@ export function renderFooter(container) {
       </div>
     </div>
   `;
-
-  const form = container.querySelector("#zain-newsletter-form");
-  const emailInput = container.querySelector("#zain-newsletter-email");
-
-  form?.addEventListener("submit", (event) => {
-    event.preventDefault();
-    const email = emailInput?.value.trim() || "";
-    const valid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
-    if (!valid) {
-      showToast(t("footer.newsletterInvalid", getLanguage()), "error");
-      emailInput?.focus();
-      return;
-    }
-    emailInput.value = "";
-    showToast(t("footer.newsletterSuccess", getLanguage()), "success");
-  });
 }

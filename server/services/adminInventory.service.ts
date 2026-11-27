@@ -3,6 +3,7 @@ import { db } from "../db/index.js";
 import {
   inventory,
   inventoryMovements,
+  inventoryThresholdChanges,
   orders,
   productImages,
   products,
@@ -37,7 +38,6 @@ export interface AdminInventoryItemDTO {
   productNameAr: string;
   productIsPublished: boolean;
   primaryImageUrl: string | null;
-  sku: string;
   size: string;
   color: string;
   price: number;
@@ -54,7 +54,6 @@ export interface AdminInventoryItemDTO {
 export interface AdminInventoryMovementDTO {
   id: string;
   variantId: string;
-  sku: string;
   size: string;
   color: string;
   productId: string;
@@ -105,7 +104,6 @@ function mapInventoryRow(r: Record<string, unknown>): AdminInventoryItemDTO {
     productNameAr: String(r.product_name_ar ?? ""),
     productIsPublished: Boolean(r.product_is_published),
     primaryImageUrl: r.primary_image_url ? String(r.primary_image_url) : null,
-    sku: String(r.sku ?? ""),
     size: String(r.size ?? ""),
     color: String(r.color ?? ""),
     price: Math.round(Number(r.price ?? 0) * 100) / 100,
@@ -175,8 +173,7 @@ export async function listAdminInventory(
   if (query.search) {
     const pattern = `%${query.search}%`;
     conditions.push(sql`(
-      pv.sku ILIKE ${pattern}
-      OR pv.size ILIKE ${pattern}
+      pv.size ILIKE ${pattern}
       OR pv.color ILIKE ${pattern}
       OR p.name_en ILIKE ${pattern}
       OR p.name_ar ILIKE ${pattern}
@@ -208,15 +205,13 @@ export async function listAdminInventory(
 
   const whereClause = sql.join(conditions, sql` AND `);
 
-  let orderBySql = sql`COALESCE(inv.updated_at, pv.created_at) DESC, pv.sku ASC`;
+  let orderBySql = sql`COALESCE(inv.updated_at, pv.created_at) DESC, p.name_en ASC, pv.size ASC, pv.color ASC, pv.id ASC`;
   if (query.sort === "available_asc") {
-    orderBySql = sql`(COALESCE(inv.quantity, 0) - COALESCE(inv.reserved_quantity, 0)) ASC, pv.sku ASC`;
+    orderBySql = sql`(COALESCE(inv.quantity, 0) - COALESCE(inv.reserved_quantity, 0)) ASC, p.name_en ASC, pv.size ASC, pv.color ASC, pv.id ASC`;
   } else if (query.sort === "available_desc") {
-    orderBySql = sql`(COALESCE(inv.quantity, 0) - COALESCE(inv.reserved_quantity, 0)) DESC, pv.sku ASC`;
-  } else if (query.sort === "sku_asc") {
-    orderBySql = sql`pv.sku ASC`;
+    orderBySql = sql`(COALESCE(inv.quantity, 0) - COALESCE(inv.reserved_quantity, 0)) DESC, p.name_en ASC, pv.size ASC, pv.color ASC, pv.id ASC`;
   } else if (query.sort === "product_asc") {
-    orderBySql = sql`p.name_en ASC, pv.size ASC, pv.color ASC`;
+    orderBySql = sql`p.name_en ASC, pv.size ASC, pv.color ASC, pv.id ASC`;
   }
 
   const countRes = await db.execute(sql`
@@ -245,7 +240,6 @@ export async function listAdminInventory(
         ORDER BY pi.is_primary DESC, pi.display_order ASC
         LIMIT 1
       ) AS primary_image_url,
-      pv.sku,
       pv.size,
       pv.color,
       pv.price::numeric(12, 2)::text AS price,
@@ -300,7 +294,6 @@ export async function getAdminInventoryVariantDetail(
         ORDER BY pi.is_primary DESC, pi.display_order ASC
         LIMIT 1
       ) AS primary_image_url,
-      pv.sku,
       pv.size,
       pv.color,
       pv.price::numeric(12, 2)::text AS price,
@@ -365,9 +358,10 @@ export async function listAdminInventoryMovements(
   if (query.search) {
     const pattern = `%${query.search}%`;
     conditions.push(sql`(
-      pv.sku ILIKE ${pattern}
-      OR p.name_en ILIKE ${pattern}
+      p.name_en ILIKE ${pattern}
       OR p.name_ar ILIKE ${pattern}
+      OR pv.size ILIKE ${pattern}
+      OR pv.color ILIKE ${pattern}
       OR COALESCE(im.reason, '') ILIKE ${pattern}
       OR COALESCE(o.order_number, '') ILIKE ${pattern}
     )`);
@@ -403,7 +397,6 @@ export async function listAdminInventoryMovements(
     SELECT
       im.id,
       im.variant_id,
-      pv.sku,
       pv.size,
       pv.color,
       p.id AS product_id,
@@ -436,7 +429,6 @@ export async function listAdminInventoryMovements(
     return {
       id: String(r.id),
       variantId: String(r.variant_id),
-      sku: String(r.sku ?? ""),
       size: String(r.size ?? ""),
       color: String(r.color ?? ""),
       productId: String(r.product_id),
@@ -490,7 +482,6 @@ export async function adjustVariantInventoryStock(
       .select({
         id: productVariants.id,
         productId: productVariants.productId,
-        sku: productVariants.sku,
         size: productVariants.size,
         color: productVariants.color,
         price: productVariants.price,
@@ -544,13 +535,8 @@ export async function adjustVariantInventoryStock(
           variantId: inventoryMovements.variantId,
           movementType: inventoryMovements.movementType,
           quantity: inventoryMovements.quantity,
-          previousQuantity: inventoryMovements.previousQuantity,
           resultingQuantity: inventoryMovements.resultingQuantity,
           reason: inventoryMovements.reason,
-          referenceId: inventoryMovements.referenceId,
-          performedBy: inventoryMovements.performedBy,
-          idempotencyKey: inventoryMovements.idempotencyKey,
-          createdAt: inventoryMovements.createdAt,
         })
         .from(inventoryMovements)
         .where(
@@ -562,6 +548,23 @@ export async function adjustVariantInventoryStock(
         .limit(1);
 
       if (existingMovement) {
+        const matchesRequest =
+          existingMovement.reason === input.reason &&
+          (input.mode === "increase"
+            ? existingMovement.movementType === "addition" &&
+              existingMovement.quantity === input.amount
+            : input.mode === "decrease"
+            ? existingMovement.movementType === "reduction" &&
+              existingMovement.quantity === -input.amount
+            : existingMovement.movementType === "adjustment" &&
+              existingMovement.resultingQuantity === input.amount);
+        if (!matchesRequest) {
+          throw new AppError(
+            "This idempotency key was already used for a different stock adjustment.",
+            409,
+            "IDEMPOTENCY_KEY_REUSED"
+          );
+        }
         return {
           alreadyProcessed: true,
           movementId: existingMovement.id,
@@ -659,7 +662,6 @@ export async function adjustVariantInventoryStock(
       SELECT
         im.id,
         im.variant_id,
-        pv.sku,
         pv.size,
         pv.color,
         p.id AS product_id,
@@ -689,7 +691,6 @@ export async function adjustVariantInventoryStock(
   const movement: AdminInventoryMovementDTO = {
     id: String(mr.id),
     variantId: String(mr.variant_id),
-    sku: String(mr.sku ?? ""),
     size: String(mr.size ?? ""),
     color: String(mr.color ?? ""),
     productId: String(mr.product_id),
@@ -723,7 +724,8 @@ export async function adjustVariantInventoryStock(
 
 export async function updateVariantLowStockThreshold(
   variantId: string,
-  input: UpdateLowStockThresholdInput
+  input: UpdateLowStockThresholdInput,
+  adminUserId: string
 ): Promise<AdminInventoryItemDTO> {
   const [variant] = await db
     .select({ id: productVariants.id })
@@ -735,22 +737,42 @@ export async function updateVariantLowStockThreshold(
     throw new AppError("Product variant not found.", 404, "VARIANT_NOT_FOUND");
   }
 
-  await db
-    .insert(inventory)
-    .values({
-      variantId,
-      quantity: 0,
-      reservedQuantity: 0,
-      lowStockThreshold: input.lowStockThreshold,
-      updatedAt: new Date(),
-    })
-    .onConflictDoUpdate({
-      target: inventory.variantId,
-      set: {
+  await db.transaction(async (tx) => {
+    await tx
+      .insert(inventory)
+      .values({
+        variantId,
+        quantity: 0,
+        reservedQuantity: 0,
+        lowStockThreshold: 5,
+      })
+      .onConflictDoNothing({ target: inventory.variantId });
+
+    const [currentInventory] = await tx
+      .select({ lowStockThreshold: inventory.lowStockThreshold })
+      .from(inventory)
+      .where(eq(inventory.variantId, variantId))
+      .for("update");
+
+    if (!currentInventory) {
+      throw new AppError("Inventory record could not be initialized.", 500, "INVENTORY_INIT_FAILED");
+    }
+
+    await tx
+      .update(inventory)
+      .set({
         lowStockThreshold: input.lowStockThreshold,
         updatedAt: new Date(),
-      },
+      })
+      .where(eq(inventory.variantId, variantId));
+
+    await tx.insert(inventoryThresholdChanges).values({
+      variantId,
+      previousThreshold: currentInventory.lowStockThreshold,
+      newThreshold: input.lowStockThreshold,
+      changedBy: adminUserId,
     });
+  });
 
   const detail = await getAdminInventoryVariantDetail(variantId);
   return detail.item;

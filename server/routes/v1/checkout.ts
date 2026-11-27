@@ -54,11 +54,19 @@ checkoutRouter.post("/orders", requireCsrf, async (req, res, next) => {
     const idempotencyKey =
       (typeof headerIdempotency === "string" && headerIdempotency.trim()) ||
       payload.idempotencyKey;
+    const acceptLanguage = req.get("accept-language") || "";
+    const language: "en" | "ar" = acceptLanguage
+      .split(",")[0]
+      .trim()
+      .toLowerCase()
+      .startsWith("ar")
+      ? "ar"
+      : "en";
 
     const result = await placeCodOrder(req.auth!.user.id, {
       ...payload,
       idempotencyKey,
-    });
+    }, language);
 
     res.setHeader("Cache-Control", "no-store");
     res.status(result.alreadyExisted ? 200 : 201).json({

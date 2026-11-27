@@ -1,5 +1,16 @@
 import { z } from "zod";
 
+const isValidCalendarDate = (value: string) => {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const [year, month, day] = value.split("-").map(Number);
+  const date = new Date(Date.UTC(year, month - 1, day));
+  return (
+    date.getUTCFullYear() === year &&
+    date.getUTCMonth() === month - 1 &&
+    date.getUTCDate() === day
+  );
+};
+
 export const adminOrdersQuerySchema = z.object({
   search: z.preprocess(
     (v) => (typeof v === "string" ? v.trim() || undefined : undefined),
@@ -38,6 +49,31 @@ export const adminOrdersQuerySchema = z.object({
     .default("newest"),
   page: z.coerce.number().int().min(1).max(1000).default(1),
   limit: z.coerce.number().int().min(1).max(50).default(15),
+}).superRefine((query, ctx) => {
+  for (const field of ["startDate", "endDate"] as const) {
+    const value = query[field];
+    if (value && !isValidCalendarDate(value)) {
+      ctx.addIssue({
+        code: "custom",
+        path: [field],
+        message: `${field} must be a valid YYYY-MM-DD calendar date.`,
+      });
+    }
+  }
+
+  if (
+    query.startDate &&
+    query.endDate &&
+    isValidCalendarDate(query.startDate) &&
+    isValidCalendarDate(query.endDate) &&
+    query.startDate > query.endDate
+  ) {
+    ctx.addIssue({
+      code: "custom",
+      path: ["startDate"],
+      message: "Start date cannot be after end date.",
+    });
+  }
 });
 
 const optionalTrimmedText = (maxLen: number) =>

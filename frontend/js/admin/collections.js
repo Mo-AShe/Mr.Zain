@@ -42,54 +42,6 @@ function formatTemplate(template, vars) {
   );
 }
 
-function isValidImageUrlInput(raw) {
-  const trimmed = String(raw || "").trim();
-  if (!trimmed) return true;
-  if (/\s/.test(trimmed)) return false;
-  if (trimmed.startsWith("/")) {
-    return /^\/[A-Za-z0-9/_\-.~%?&=+#]+$/.test(trimmed) && !trimmed.startsWith("//");
-  }
-  try {
-    const parsed = new URL(trimmed);
-    return parsed.protocol === "https:" || parsed.protocol === "http:";
-  } catch {
-    return false;
-  }
-}
-
-function bindLivePreview(inputEl, previewWrapEl, lang) {
-  if (!inputEl || !previewWrapEl) return;
-
-  const update = () => {
-    const val = inputEl.value.trim();
-    if (!val) {
-      previewWrapEl.innerHTML = `<span>${escapeHtml(t("adminCatalog.noImage", lang))}</span>`;
-      return;
-    }
-    if (!isValidImageUrlInput(val)) {
-      previewWrapEl.innerHTML = `<span style="color: var(--color-danger);">${escapeHtml(
-        t("adminCatalog.imageBroken", lang)
-      )}</span>`;
-      return;
-    }
-
-    const img = document.createElement("img");
-    img.src = val;
-    img.alt = "";
-    img.referrerPolicy = "no-referrer";
-    img.addEventListener("error", () => {
-      previewWrapEl.innerHTML = `<span style="color: var(--color-danger);">${escapeHtml(
-        t("adminCatalog.imageBroken", lang)
-      )}</span>`;
-    });
-    previewWrapEl.innerHTML = "";
-    previewWrapEl.appendChild(img);
-  };
-
-  inputEl.addEventListener("input", update);
-  update();
-}
-
 function openCollectionModal({ existing = null, onSaved, onAuthError }) {
   const lang = getLanguage();
   const isEdit = Boolean(existing);
@@ -112,21 +64,8 @@ function openCollectionModal({ existing = null, onSaved, onAuthError }) {
 
         <div class="field admin-form-full">
           <label class="field__label" for="col-slug">${escapeHtml(t("adminCatalog.slug", lang))}</label>
-          <input id="col-slug" class="input" type="text" maxlength="220" dir="ltr" placeholder="${escapeHtml(t("adminCatalog.slugPlaceholder", lang))}" value="${escapeHtml(existing?.slug || "")}" />
+          <input id="col-slug" class="input" type="text" maxlength="160" dir="ltr" placeholder="${escapeHtml(t("adminCatalog.slugPlaceholder", lang))}" value="${escapeHtml(existing?.slug || "")}" />
           <span class="field__hint">${escapeHtml(t("adminCatalog.slugHint", lang))}</span>
-        </div>
-
-        <div class="field admin-form-full">
-          <label class="field__label" for="col-image-url">${escapeHtml(t("adminCatalog.imageUrl", lang))}</label>
-          <input id="col-image-url" class="input" type="text" maxlength="2000" dir="ltr" placeholder="${escapeHtml(t("adminCatalog.imageUrlPlaceholder", lang))}" value="${escapeHtml(existing?.imageUrl || "")}" />
-          <span class="field__hint">${escapeHtml(t("adminCatalog.imageUrlHint", lang))}</span>
-        </div>
-
-        <div class="admin-preview-box admin-form-full">
-          <div class="admin-preview-box__frame" id="col-image-preview"></div>
-          <div class="admin-preview-box__meta">
-            <strong>${escapeHtml(t("adminCatalog.previewLabel", lang))}</strong>
-          </div>
         </div>
 
         <div class="field">
@@ -167,10 +106,6 @@ function openCollectionModal({ existing = null, onSaved, onAuthError }) {
   const form = document.getElementById("admin-collection-form");
   const errBox = document.getElementById("admin-col-form-error");
   const submitBtn = document.getElementById("col-submit-btn");
-  const imgInput = document.getElementById("col-image-url");
-  const imgPreview = document.getElementById("col-image-preview");
-
-  bindLivePreview(imgInput, imgPreview, lang);
 
   document.getElementById("col-cancel-btn")?.addEventListener("click", closeModal);
 
@@ -182,7 +117,6 @@ function openCollectionModal({ existing = null, onSaved, onAuthError }) {
     const nameEn = document.getElementById("col-name-en").value.trim();
     const nameAr = document.getElementById("col-name-ar").value.trim();
     const slug = document.getElementById("col-slug").value.trim().toLowerCase();
-    const imageUrl = imgInput.value.trim();
     const descriptionEn = document.getElementById("col-desc-en").value.trim();
     const descriptionAr = document.getElementById("col-desc-ar").value.trim();
     const isActive = document.getElementById("col-active").checked;
@@ -197,17 +131,10 @@ function openCollectionModal({ existing = null, onSaved, onAuthError }) {
       errBox.hidden = false;
       return;
     }
-    if (imageUrl && !isValidImageUrlInput(imageUrl)) {
-      errBox.textContent = t("adminCatalog.collections.errImageUrl", curLang);
-      errBox.hidden = false;
-      return;
-    }
-
     const payload = {
       nameEn,
       nameAr,
       ...(slug ? { slug } : {}),
-      imageUrl: imageUrl || null,
       descriptionEn: descriptionEn || null,
       descriptionAr: descriptionAr || null,
       isActive,
@@ -262,32 +189,103 @@ async function openManageCollectionProductsModal(collectionSummary, { onSaved, o
 
   let detail = null;
   let allProducts = [];
+  let productSearch = "";
+  let productPage = 0;
+  let productHasMore = false;
+  let productLoading = false;
+  let productError = "";
+  let productRequestId = 0;
+  let productSearchTimer = null;
 
-  const loadBoth = async () => {
-    const [colDetail, prodListRes] = await Promise.all([
-      fetchAdminCollectionDetail(collectionSummary.id),
-      fetchAdminProducts({ limit: 50, page: 1, sort: "name_asc" }),
-    ]);
-    detail = colDetail;
-    allProducts = Array.isArray(prodListRes?.items) ? prodListRes.items : [];
+  const loadProducts = async ({ reset = false, focusSearch = false } = {}) => {
+    const requestId = ++productRequestId;
+    const searchInput = document.getElementById("col-product-search");
+    const selectionStart = searchInput?.selectionStart;
+    const selectionEnd = searchInput?.selectionEnd;
+    const page = reset ? 1 : productPage + 1;
+    const search = productSearch;
+
+    if (reset) {
+      productPage = 0;
+      productHasMore = true;
+      allProducts = [];
+    }
+    productLoading = true;
+    productError = "";
+    renderModalBody();
+
+    try {
+      const result = await fetchAdminProducts({
+        search,
+        limit: 50,
+        page,
+        sort: "name_asc",
+      });
+      if (requestId !== productRequestId || !container.isConnected) return;
+
+      const items = Array.isArray(result?.items) ? result.items : [];
+      allProducts = reset ? items : [...allProducts, ...items];
+      productPage = Number(result?.pagination?.page ?? page);
+      productHasMore =
+        productPage < Number(result?.pagination?.totalPages ?? productPage);
+    } catch (err) {
+      if (requestId !== productRequestId || !container.isConnected) return;
+      if (err && (err.status === 401 || err.status === 403)) {
+        productRequestId += 1;
+        closeModal();
+        await onAuthError(err);
+        return;
+      }
+      productError = err?.message || t("adminCatalog.errorTitle", getLanguage());
+    } finally {
+      if (requestId === productRequestId && container.isConnected) {
+        productLoading = false;
+        renderModalBody();
+        if (focusSearch) {
+          const nextSearchInput = document.getElementById("col-product-search");
+          nextSearchInput?.focus();
+          if (selectionStart !== undefined && selectionEnd !== undefined) {
+            nextSearchInput?.setSelectionRange(selectionStart, selectionEnd);
+          }
+        }
+      }
+    }
   };
 
   const renderModalBody = () => {
     const curLang = getLanguage();
     const assignedIds = new Set((detail?.products || []).map((p) => p.id));
     const availableProducts = allProducts.filter((p) => !assignedIds.has(p.id));
+    const collectionIsActive = detail?.isActive ?? collectionSummary.isActive;
 
     container.innerHTML = `
       <div class="admin-form-error" id="col-products-error" hidden role="alert"></div>
+      ${
+        collectionIsActive
+          ? ""
+          : `<div class="admin-notice admin-notice--warn">${escapeHtml(t("adminCatalog.collections.inactiveAssignNotice", curLang))}</div>`
+      }
 
       <form class="admin-collection-assign-form" id="col-add-product-form">
         <div class="field">
           <label class="field__label" for="col-product-select">${escapeHtml(
             t("adminCatalog.collections.addProductLabel", curLang)
           )}</label>
-          <select id="col-product-select" class="input" ${availableProducts.length === 0 ? "disabled" : ""}>
+          <input
+            id="col-product-search"
+            class="input"
+            type="search"
+            value="${escapeHtml(productSearch)}"
+            placeholder="${escapeHtml(t("adminCatalog.collections.searchProductsPlaceholder", curLang))}"
+            ${!collectionIsActive ? "disabled" : ""}
+          />
+          <select id="col-product-select" class="input" ${availableProducts.length === 0 || !collectionIsActive || productLoading ? "disabled" : ""}>
             <option value="">${escapeHtml(
-              availableProducts.length === 0
+              productLoading
+                ? t("adminCatalog.collections.loadingProducts", curLang)
+                : availableProducts.length === 0 && productSearch
+                ? t("adminCatalog.collections.noMatchingProducts", curLang)
+                : availableProducts.length === 0
                 ? t("adminCatalog.collections.noAvailableProducts", curLang)
                 : t("adminCatalog.collections.selectProductPlaceholder", curLang)
             )}</option>
@@ -300,9 +298,25 @@ async function openManageCollectionProductsModal(collectionSummary, { onSaved, o
               })
               .join("")}
           </select>
+          ${
+            productError
+              ? `<p class="admin-form-error" role="alert">${escapeHtml(productError)}</p>`
+              : ""
+          }
+          ${
+            productHasMore || productError
+              ? `<button type="button" class="btn btn--secondary btn--sm" id="col-load-more-products" ${productLoading ? "disabled" : ""}>${escapeHtml(
+                  productLoading
+                    ? t("adminCatalog.collections.loadingProducts", curLang)
+                    : productError
+                    ? t("adminCatalog.collections.retryProducts", curLang)
+                    : t("adminCatalog.collections.loadMoreProducts", curLang)
+                )}</button>`
+              : ""
+          }
         </div>
         <button type="submit" class="btn btn--primary btn--sm" id="col-add-product-btn" ${
-          availableProducts.length === 0 ? "disabled" : ""
+          availableProducts.length === 0 || !collectionIsActive || productLoading ? "disabled" : ""
         }>
           ${escapeHtml(t("adminCatalog.collections.addProductBtn", curLang))}
         </button>
@@ -369,6 +383,16 @@ async function openManageCollectionProductsModal(collectionSummary, { onSaved, o
     `;
 
     document.getElementById("col-products-close")?.addEventListener("click", closeModal);
+    document.getElementById("col-product-search")?.addEventListener("input", (event) => {
+      productSearch = event.currentTarget.value;
+      clearTimeout(productSearchTimer);
+      productSearchTimer = setTimeout(() => {
+        void loadProducts({ reset: true, focusSearch: true });
+      }, 300);
+    });
+    document.getElementById("col-load-more-products")?.addEventListener("click", () => {
+      void loadProducts({ reset: productPage === 0 });
+    });
 
     document.getElementById("col-add-product-form")?.addEventListener("submit", async (e) => {
       e.preventDefault();
@@ -426,8 +450,9 @@ async function openManageCollectionProductsModal(collectionSummary, { onSaved, o
   };
 
   try {
-    await loadBoth();
+    detail = await fetchAdminCollectionDetail(collectionSummary.id);
     renderModalBody();
+    await loadProducts({ reset: true });
   } catch (err) {
     if (err && (err.status === 401 || err.status === 403)) {
       closeModal();
@@ -566,13 +591,6 @@ export function renderCollectionsSection(mainEl, { onAuthError, onRender }) {
                 <tr>
                   <td>
                     <div class="admin-table-item">
-                      <span class="admin-thumb admin-thumb--square">
-                        ${
-                          col.imageUrl
-                            ? `<img src="${escapeHtml(col.imageUrl)}" alt="${escapeHtml(primaryName)}" referrerpolicy="no-referrer" onerror="this.style.display='none'" />`
-                            : `<span style="font-size: 10px;">—</span>`
-                        }
-                      </span>
                       <div class="admin-table-item__meta">
                         <span class="admin-table-item__title">${escapeHtml(primaryName)}</span>
                         <span class="admin-table-item__sub">${escapeHtml(secondaryName || "")}</span>

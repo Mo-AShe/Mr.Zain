@@ -98,7 +98,7 @@ export async function getAdminDashboardOverview(): Promise<AdminDashboardOvervie
     recentOrdersRes,
     bestSellingRes,
   ] = await Promise.all([
-    // 1. Order counts directly on orders table (no joins -> zero duplicate rows)
+    // 1. Paid order counts directly on orders table (no joins -> zero duplicate rows)
     db.execute(sql`
       SELECT
         COUNT(*)::int AS total_orders,
@@ -109,6 +109,7 @@ export async function getAdminDashboardOverview(): Promise<AdminDashboardOvervie
         COUNT(*) FILTER (WHERE order_status = 'delivered')::int AS delivered_orders,
         COUNT(*) FILTER (WHERE order_status = 'cancelled')::int AS cancelled_orders
       FROM orders
+        WHERE payment_status = 'paid'
     `),
 
     // 2. Collected revenue strictly from successfully paid, non-cancelled orders.

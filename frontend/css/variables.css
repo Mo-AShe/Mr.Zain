@@ -12,6 +12,7 @@
   --color-ivory: #f5f2ea;
   --color-ivory-deep: #ebe6da;
   --color-grey: #777777;
+  --color-gray: var(--color-grey);
   --color-white: #ffffff;
 
   /* Semantic Surfaces & Borders */
@@ -44,7 +45,7 @@
   --text-xl: 1.375rem;     /* 22px */
   --text-2xl: 1.75rem;     /* 28px */
   --text-3xl: 2.25rem;     /* 36px */
-  --text-hero: clamp(2.25rem, 4.2vw, 3.75rem);
+  --text-hero: clamp(2.5rem, 5.1vw, 4.75rem);
 
   /* Spacing & Layout */
   --space-1: 0.25rem;
@@ -57,10 +58,10 @@
   --space-8: 4.5rem;
   --space-9: 6rem;
 
-  --container-max: 1280px;
-  --container-gutter: 1.5rem;
+  --container-max: 1360px;
+  --container-gutter: clamp(1.25rem, 4vw, 3.5rem);
   --announcement-height: 36px;
-  --header-height: 76px;
+  --header-height: 80px;
 
   /* Geometry & Restraint */
   --radius-none: 0px;
@@ -77,6 +78,7 @@
   /* Layering */
   --z-header: 40;
   --z-drawer: 60;
+  --z-popover: 70;
   --z-modal: 80;
   --z-toast: 100;
 }

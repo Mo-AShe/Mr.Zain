@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, gte, inArray, lte, ne, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, ne, sql } from "drizzle-orm";
 import { db } from "../db/index.js";
 import {
   banners,
@@ -14,6 +14,11 @@ import {
 } from "../db/schema.js";
 import type { ProductsQueryInput } from "../validators/catalog.validators.js";
 import { getHomepageAdminConfig } from "./adminSettings.service.js";
+import {
+  getBestSellerProductIds,
+  isWithinNewProductWindow,
+  NEW_PRODUCT_WINDOW_DAYS,
+} from "./product-merchandising.service.js";
 
 export interface PublicCategoryDTO {
   id: string;
@@ -114,13 +119,13 @@ async function hydrateProductSummaries(
     basePrice: string;
     compareAtPrice: string | null;
     isFeatured: boolean;
-    isNew: boolean;
-    isBestSeller: boolean;
+    createdAt: Date;
     categoryId: string;
     categorySlug: string;
     categoryNameEn: string;
     categoryNameAr: string;
-  }>
+  }>,
+  bestSellerProductIds: ReadonlySet<string>
 ): Promise<PublicProductSummaryDTO[]> {
   if (productRows.length === 0) return [];
 
@@ -142,6 +147,7 @@ async function hydrateProductSummaries(
         productId: productVariants.productId,
         size: productVariants.size,
         color: productVariants.color,
+        price: productVariants.price,
         quantity: inventory.quantity,
         reservedQuantity: inventory.reservedQuantity,
       })
@@ -164,17 +170,18 @@ async function hydrateProductSummaries(
 
   const variantsByProduct = new Map<
     string,
-    { sizes: Set<string>; colors: Set<string>; inStock: boolean }
+    { sizes: Set<string>; colors: Set<string>; inStock: boolean; minPrice: number }
   >();
 
   for (const variant of variantRows) {
     let bucket = variantsByProduct.get(variant.productId);
     if (!bucket) {
-      bucket = { sizes: new Set(), colors: new Set(), inStock: false };
+      bucket = { sizes: new Set(), colors: new Set(), inStock: false, minPrice: Infinity };
       variantsByProduct.set(variant.productId, bucket);
     }
     bucket.sizes.add(variant.size);
     bucket.colors.add(variant.color);
+    bucket.minPrice = Math.min(bucket.minPrice, Number(variant.price));
     const available = Math.max(
       0,
       Number(variant.quantity ?? 0) - Number(variant.reservedQuantity ?? 0)
@@ -191,12 +198,12 @@ async function hydrateProductSummaries(
       slug: row.slug,
       name_en: row.nameEn,
       name_ar: row.nameAr,
-      basePrice: Number(row.basePrice),
+      basePrice: meta && Number.isFinite(meta.minPrice) ? meta.minPrice : Number(row.basePrice),
       compareAtPrice:
         row.compareAtPrice !== null ? Number(row.compareAtPrice) : null,
       isFeatured: row.isFeatured,
-      isNew: row.isNew,
-      isBestSeller: row.isBestSeller,
+      isNew: isWithinNewProductWindow(row.createdAt),
+      isBestSeller: bestSellerProductIds.has(row.id),
       imageUrl: primaryImageMap.get(row.id) ?? null,
       category: {
         id: row.categoryId,
@@ -219,6 +226,13 @@ export async function listPublishedProducts(input: ProductsQueryInput) {
     eq(products.isPublished, true),
     eq(categories.isActive, true),
   ];
+  const storefrontPriceExpr = sql`COALESCE(
+    (SELECT MIN(pv.price)
+     FROM product_variants pv
+     WHERE pv.product_id = ${products.id}
+       AND pv.is_active = true),
+    ${products.basePrice}
+  )`;
 
   if (searchTerm) {
     const pattern = `%${searchTerm}%`;
@@ -250,11 +264,11 @@ export async function listPublishedProducts(input: ProductsQueryInput) {
   }
 
   if (input.minPrice !== undefined) {
-    conditions.push(gte(products.basePrice, input.minPrice.toFixed(2)));
+    conditions.push(sql`${storefrontPriceExpr} >= ${input.minPrice.toFixed(2)}`);
   }
 
   if (input.maxPrice !== undefined) {
-    conditions.push(lte(products.basePrice, input.maxPrice.toFixed(2)));
+    conditions.push(sql`${storefrontPriceExpr} <= ${input.maxPrice.toFixed(2)}`);
   }
 
   if (input.size || input.color || inStockOnly) {
@@ -296,22 +310,24 @@ export async function listPublishedProducts(input: ProductsQueryInput) {
   const popularityOrderExpr = sql`(
     SELECT COALESCE(SUM(oi.quantity), 0)
     FROM order_items oi
+    INNER JOIN orders o ON o.id = oi.order_id
     INNER JOIN product_variants pv2 ON pv2.id = oi.variant_id
     WHERE pv2.product_id = ${products.id}
+      AND o.payment_status = 'paid'
+      AND o.order_status <> 'cancelled'
   )`;
 
   let orderByClauses;
   switch (input.sort) {
     case "price_asc":
-      orderByClauses = [asc(products.basePrice), desc(products.createdAt)];
+      orderByClauses = [asc(storefrontPriceExpr), desc(products.createdAt)];
       break;
     case "price_desc":
-      orderByClauses = [desc(products.basePrice), desc(products.createdAt)];
+      orderByClauses = [desc(storefrontPriceExpr), desc(products.createdAt)];
       break;
     case "popularity":
       orderByClauses = [
         desc(popularityOrderExpr),
-        desc(products.isBestSeller),
         desc(products.createdAt),
       ];
       break;
@@ -321,30 +337,32 @@ export async function listPublishedProducts(input: ProductsQueryInput) {
       break;
   }
 
-  const rows = await db
-    .select({
-      id: products.id,
-      slug: products.slug,
-      nameEn: products.nameEn,
-      nameAr: products.nameAr,
-      basePrice: products.basePrice,
-      compareAtPrice: products.compareAtPrice,
-      isFeatured: products.isFeatured,
-      isNew: products.isNew,
-      isBestSeller: products.isBestSeller,
-      categoryId: categories.id,
-      categorySlug: categories.slug,
-      categoryNameEn: categories.nameEn,
-      categoryNameAr: categories.nameAr,
-    })
-    .from(products)
-    .innerJoin(categories, eq(categories.id, products.categoryId))
-    .where(whereClause)
-    .orderBy(...orderByClauses)
-    .limit(input.limit)
-    .offset(offset);
+  const [rows, bestSellerProductIds] = await Promise.all([
+    db
+      .select({
+        id: products.id,
+        slug: products.slug,
+        nameEn: products.nameEn,
+        nameAr: products.nameAr,
+        basePrice: products.basePrice,
+        compareAtPrice: products.compareAtPrice,
+        isFeatured: products.isFeatured,
+        createdAt: products.createdAt,
+        categoryId: categories.id,
+        categorySlug: categories.slug,
+        categoryNameEn: categories.nameEn,
+        categoryNameAr: categories.nameAr,
+      })
+      .from(products)
+      .innerJoin(categories, eq(categories.id, products.categoryId))
+      .where(whereClause)
+      .orderBy(...orderByClauses)
+      .limit(input.limit)
+      .offset(offset),
+    getBestSellerProductIds(),
+  ]);
 
-  const items = await hydrateProductSummaries(rows);
+  const items = await hydrateProductSummaries(rows, bestSellerProductIds);
 
   const facetRows = await db
     .selectDistinct({
@@ -388,34 +406,36 @@ export async function listPublishedProducts(input: ProductsQueryInput) {
 export async function getPublishedProductBySlug(
   slug: string
 ): Promise<PublicProductDetailDTO | null> {
-  const [row] = await db
-    .select({
-      id: products.id,
-      slug: products.slug,
-      nameEn: products.nameEn,
-      nameAr: products.nameAr,
-      descriptionEn: products.descriptionEn,
-      descriptionAr: products.descriptionAr,
-      basePrice: products.basePrice,
-      compareAtPrice: products.compareAtPrice,
-      isFeatured: products.isFeatured,
-      isNew: products.isNew,
-      isBestSeller: products.isBestSeller,
-      categoryId: categories.id,
-      categorySlug: categories.slug,
-      categoryNameEn: categories.nameEn,
-      categoryNameAr: categories.nameAr,
-    })
-    .from(products)
-    .innerJoin(categories, eq(categories.id, products.categoryId))
-    .where(
-      and(
-        eq(products.slug, slug),
-        eq(products.isPublished, true),
-        eq(categories.isActive, true)
+  const [[row], bestSellerProductIds] = await Promise.all([
+    db
+      .select({
+        id: products.id,
+        slug: products.slug,
+        nameEn: products.nameEn,
+        nameAr: products.nameAr,
+        descriptionEn: products.descriptionEn,
+        descriptionAr: products.descriptionAr,
+        basePrice: products.basePrice,
+        compareAtPrice: products.compareAtPrice,
+        isFeatured: products.isFeatured,
+        createdAt: products.createdAt,
+        categoryId: categories.id,
+        categorySlug: categories.slug,
+        categoryNameEn: categories.nameEn,
+        categoryNameAr: categories.nameAr,
+      })
+      .from(products)
+      .innerJoin(categories, eq(categories.id, products.categoryId))
+      .where(
+        and(
+          eq(products.slug, slug),
+          eq(products.isPublished, true),
+          eq(categories.isActive, true)
+        )
       )
-    )
-    .limit(1);
+      .limit(1),
+    getBestSellerProductIds(),
+  ]);
 
   if (!row) return null;
 
@@ -474,8 +494,7 @@ export async function getPublishedProductBySlug(
         basePrice: products.basePrice,
         compareAtPrice: products.compareAtPrice,
         isFeatured: products.isFeatured,
-        isNew: products.isNew,
-        isBestSeller: products.isBestSeller,
+        createdAt: products.createdAt,
         categoryId: categories.id,
         categorySlug: categories.slug,
         categoryNameEn: categories.nameEn,
@@ -523,7 +542,10 @@ export async function getPublishedProductBySlug(
     if (v.inStock) anyInStock = true;
   }
 
-  const relatedProducts = await hydrateProductSummaries(relatedRows);
+  const relatedProducts = await hydrateProductSummaries(
+    relatedRows,
+    bestSellerProductIds
+  );
 
   return {
     id: row.id,
@@ -532,12 +554,15 @@ export async function getPublishedProductBySlug(
     name_ar: row.nameAr,
     description_en: row.descriptionEn,
     description_ar: row.descriptionAr,
-    basePrice: Number(row.basePrice),
+    basePrice:
+      variants.length > 0
+        ? Math.min(...variants.map((variant) => variant.price))
+        : Number(row.basePrice),
     compareAtPrice:
       row.compareAtPrice !== null ? Number(row.compareAtPrice) : null,
     isFeatured: row.isFeatured,
-    isNew: row.isNew,
-    isBestSeller: row.isBestSeller,
+    isNew: isWithinNewProductWindow(row.createdAt),
+    isBestSeller: bestSellerProductIds.has(row.id),
     imageUrl: imageRows[0]?.imageUrl ?? null,
     images: imageRows.map((img) => ({
       id: img.id,
@@ -633,6 +658,10 @@ export async function listActiveCollections(): Promise<PublicCollectionDTO[]> {
 }
 
 export async function getHomepageData() {
+  const bestSellerProductIds = await getBestSellerProductIds();
+  const bestSellerRank = new Map(
+    [...bestSellerProductIds].map((productId, index) => [productId, index])
+  );
   const [
     homepageConfig,
     sectionRows,
@@ -680,8 +709,7 @@ export async function getHomepageData() {
         basePrice: products.basePrice,
         compareAtPrice: products.compareAtPrice,
         isFeatured: products.isFeatured,
-        isNew: products.isNew,
-        isBestSeller: products.isBestSeller,
+        createdAt: products.createdAt,
         categoryId: categories.id,
         categorySlug: categories.slug,
         categoryNameEn: categories.nameEn,
@@ -693,7 +721,8 @@ export async function getHomepageData() {
         and(
           eq(products.isPublished, true),
           eq(categories.isActive, true),
-          eq(products.isNew, true)
+          sql`${products.createdAt} > NOW() - ${NEW_PRODUCT_WINDOW_DAYS} * INTERVAL '1 day'`,
+          sql`${products.createdAt} <= NOW()`
         )
       )
       .orderBy(desc(products.createdAt))
@@ -707,8 +736,7 @@ export async function getHomepageData() {
         basePrice: products.basePrice,
         compareAtPrice: products.compareAtPrice,
         isFeatured: products.isFeatured,
-        isNew: products.isNew,
-        isBestSeller: products.isBestSeller,
+        createdAt: products.createdAt,
         categoryId: categories.id,
         categorySlug: categories.slug,
         categoryNameEn: categories.nameEn,
@@ -720,11 +748,10 @@ export async function getHomepageData() {
         and(
           eq(products.isPublished, true),
           eq(categories.isActive, true),
-          eq(products.isBestSeller, true)
+          inArray(products.id, [...bestSellerProductIds])
         )
       )
-      .orderBy(desc(products.createdAt))
-      .limit(3),
+      .limit(bestSellerProductIds.size),
     db
       .select({
         id: products.id,
@@ -734,8 +761,7 @@ export async function getHomepageData() {
         basePrice: products.basePrice,
         compareAtPrice: products.compareAtPrice,
         isFeatured: products.isFeatured,
-        isNew: products.isNew,
-        isBestSeller: products.isBestSeller,
+        createdAt: products.createdAt,
         categoryId: categories.id,
         categorySlug: categories.slug,
         categoryNameEn: categories.nameEn,
@@ -754,6 +780,12 @@ export async function getHomepageData() {
       .limit(6),
   ]);
 
+  bestSellerRows.sort(
+    (a, b) =>
+      (bestSellerRank.get(a.id) ?? Number.MAX_SAFE_INTEGER) -
+      (bestSellerRank.get(b.id) ?? Number.MAX_SAFE_INTEGER)
+  );
+
   let featuredProductRows = defaultFeaturedRows;
   if (homepageConfig.featuredProductIds.length > 0) {
     const selectedRows = await db
@@ -765,8 +797,7 @@ export async function getHomepageData() {
         basePrice: products.basePrice,
         compareAtPrice: products.compareAtPrice,
         isFeatured: products.isFeatured,
-        isNew: products.isNew,
-        isBestSeller: products.isBestSeller,
+        createdAt: products.createdAt,
         categoryId: categories.id,
         categorySlug: categories.slug,
         categoryNameEn: categories.nameEn,
@@ -803,9 +834,9 @@ export async function getHomepageData() {
   }
 
   const [newArrivals, bestSellers, featuredProducts] = await Promise.all([
-    hydrateProductSummaries(newRows),
-    hydrateProductSummaries(bestSellerRows),
-    hydrateProductSummaries(featuredProductRows),
+    hydrateProductSummaries(newRows, bestSellerProductIds),
+    hydrateProductSummaries(bestSellerRows, bestSellerProductIds),
+    hydrateProductSummaries(featuredProductRows, bestSellerProductIds),
   ]);
 
   return {

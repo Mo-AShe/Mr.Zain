@@ -83,7 +83,7 @@ function bindPasswordToggles() {
 
 function isValidEgyptianPhone(raw) {
   const cleaned = raw.replace(/[\s\-().]/g, "").trim();
-  return /^(?:\+?20|0)?1[0125]\d{8}$/.test(cleaned);
+  return /^(?:\+20|20|0)1[0125]\d{8}$/.test(cleaned);
 }
 
 function mapApiErrorKey(err, context) {
@@ -191,7 +191,10 @@ function bindRegisterForm() {
       setFieldError("err-register-email", "auth.errEmail");
       hasError = true;
     }
-    if (phone && !isValidEgyptianPhone(phone)) {
+    if (!phone) {
+      setFieldError("err-register-phone", "auth.errPhoneRequired");
+      hasError = true;
+    } else if (!isValidEgyptianPhone(phone)) {
       setFieldError("err-register-phone", "auth.errPhone");
       hasError = true;
     }
@@ -217,7 +220,7 @@ function bindRegisterForm() {
       await registerUser({
         fullName,
         email,
-        phone: phone || undefined,
+        phone,
         password,
         confirmPassword,
       });

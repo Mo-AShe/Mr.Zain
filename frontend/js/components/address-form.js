@@ -60,7 +60,7 @@ export function formatAddressLines(addr, lang = getLanguage()) {
 
 function isValidEgyptianMobile(raw) {
   const cleaned = String(raw || "").replace(/[\s\-().]/g, "").trim();
-  return /^(?:\+?20)?0?1[0125]\d{8}$/.test(cleaned);
+  return /^(?:\+20|20|0)1[0125]\d{8}$/.test(cleaned);
 }
 
 export function openAddressFormModal({
@@ -281,7 +281,10 @@ export function openAddressFormModal({
       setFieldError("recipientName", t("address.errFullName", currentLang));
       hasError = true;
     }
-    if (!isValidEgyptianMobile(phone)) {
+    if (!phone) {
+      setFieldError("phone", t("address.errPhoneRequired", currentLang));
+      hasError = true;
+    } else if (!isValidEgyptianMobile(phone)) {
       setFieldError("phone", t("address.errPhone", currentLang));
       hasError = true;
     }

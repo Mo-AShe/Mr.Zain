@@ -4,6 +4,8 @@
  */
 
 import { api } from "../api.js";
+import { fetchCart } from "./cart-service.js";
+import { fetchWishlist } from "./wishlist-service.js";
 
 export async function fetchOrders({ page = 1, limit = 10, orderNumber } = {}) {
   const params = new URLSearchParams();
@@ -22,5 +24,20 @@ export async function cancelOrder(orderId, reason) {
   const response = await api.post(`/orders/${encodeURIComponent(orderId)}/cancel`, {
     ...(reason ? { reason } : {}),
   });
+
+  void Promise.allSettled([
+    fetchCart({ force: true }),
+    fetchWishlist({ force: true }),
+  ]).then((refreshResults) => {
+    for (const result of refreshResults) {
+      if (result.status === "rejected") {
+        console.warn(
+          "Order cancellation succeeded, but refreshing inventory-dependent customer state failed.",
+          result.reason
+        );
+      }
+    }
+  });
+
   return response?.order || null;
 }

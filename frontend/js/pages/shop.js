@@ -15,6 +15,7 @@ import { getLanguage, t } from "../i18n/i18n.js";
 import {
   fetchCurrentUser,
   getCachedUser,
+  hasCheckedAuthSession,
   redirectToAuth,
 } from "../services/auth-service.js";
 import {
@@ -24,8 +25,10 @@ import {
 } from "../services/catalog-service.js";
 import {
   addToWishlist,
+  fetchWishlist,
+  hasLoadedWishlist,
   getCachedWishlistIds,
-  toggleWishlistItem,
+  removeFromWishlist,
 } from "../services/wishlist-service.js";
 import { pickLocalized, resolveColorMeta } from "../utils/formatters.js";
 
@@ -379,7 +382,7 @@ function renderCatalogView() {
     const card = createProductCard(product, {
       lang,
       isWishlisted: wishlistIds.has(product.id),
-      onToggleWishlist: async (item, _nextState, wishBtn) => {
+      onToggleWishlist: async (item, nextState, wishBtn) => {
         if (!getCachedUser()) {
           const url = new URL(window.location.href);
           url.searchParams.set("pendingAction", "wishlist");
@@ -390,20 +393,24 @@ function renderCatalogView() {
 
         if (wishBtn) wishBtn.disabled = true;
         try {
-          const wish = await toggleWishlistItem(item.id);
+          if (nextState) {
+            await addToWishlist(item.id);
+          } else {
+            await removeFromWishlist(item.id);
+          }
           const currentLang = getLanguage();
           if (wishBtn) {
-            wishBtn.setAttribute("aria-pressed", String(wish.added));
+            wishBtn.setAttribute("aria-pressed", String(nextState));
             wishBtn.setAttribute(
               "aria-label",
-              wish.added
+              nextState
                 ? t("product.removeFromWishlist", currentLang)
                 : t("product.addToWishlist", currentLang)
             );
           }
           showToast(
-            t(wish.added ? "ui.wishlistAdded" : "ui.wishlistRemoved", currentLang),
-            wish.added ? "success" : "info"
+            t(nextState ? "ui.wishlistAdded" : "ui.wishlistRemoved", currentLang),
+            nextState ? "success" : "info"
           );
         } catch (err) {
           if (err && err.status === 401) {
@@ -413,7 +420,12 @@ function renderCatalogView() {
             redirectToAuth(`${url.pathname}${url.search}`);
             return;
           }
-          showToast(t("ui.actionFailed", getLanguage()), "error");
+          showToast(
+            err?.status === 403 && err?.code === "FORBIDDEN"
+              ? t("ui.customerOnlyAction", getLanguage())
+              : t("ui.actionFailed", getLanguage()),
+            "error"
+          );
         } finally {
           if (wishBtn) wishBtn.disabled = false;
         }
@@ -570,13 +582,17 @@ function bindShopEvents() {
 }
 
 function syncShopWishlistButtons() {
-  const wishlistIds = getCachedUser() ? getCachedWishlistIds() : new Set();
+  const user = getCachedUser();
+  const wishlistIds = user?.role === "customer" ? getCachedWishlistIds() : new Set();
   const lang = getLanguage();
   document
     .querySelectorAll(".product-card__wishlist[data-product-id]")
     .forEach((btn) => {
       const pid = btn.dataset.productId;
       const active = Boolean(pid && wishlistIds.has(pid));
+      btn.disabled =
+        !hasCheckedAuthSession() ||
+        (user?.role === "customer" && !hasLoadedWishlist());
       btn.setAttribute("aria-pressed", String(active));
       btn.setAttribute(
         "aria-label",
@@ -594,8 +610,13 @@ async function processPendingShopIntent(pendingProductId) {
     if (!user) return;
     await addToWishlist(pendingProductId);
     showToast(t("ui.wishlistAdded", getLanguage()), "success");
-  } catch {
-    // Non-fatal
+  } catch (err) {
+    showToast(
+      err?.status === 403 && err?.code === "FORBIDDEN"
+        ? t("ui.customerOnlyAction", getLanguage())
+        : err?.message || t("ui.actionFailed", getLanguage()),
+      "error"
+    );
   }
 }
 
@@ -604,6 +625,17 @@ async function bootstrapShop() {
   const pendingAction = initialParams.get("pendingAction");
   const pendingProductId =
     pendingAction === "wishlist" ? initialParams.get("productId") : null;
+
+  if (pendingAction === "wishlist") {
+    initialParams.delete("pendingAction");
+    initialParams.delete("productId");
+    const cleanSearch = initialParams.toString();
+    window.history.replaceState(
+      {},
+      "",
+      cleanSearch ? `${window.location.pathname}?${cleanSearch}` : window.location.pathname
+    );
+  }
 
   initLayout();
   readUrlFilters();
@@ -624,6 +656,19 @@ async function bootstrapShop() {
 
   window.addEventListener("zain:wishlistchange", syncShopWishlistButtons);
   window.addEventListener("zain:authchange", syncShopWishlistButtons);
+  fetchCurrentUser()
+    .then((user) => (user?.role === "customer" ? fetchWishlist() : null))
+    .then(syncShopWishlistButtons)
+    .catch((err) => {
+      if (err?.status !== 401) {
+        showToast(
+          err?.status === 403 && err?.code === "FORBIDDEN"
+            ? t("ui.customerOnlyAction", getLanguage())
+            : err?.message || t("ui.actionFailed", getLanguage()),
+          "error"
+        );
+      }
+    });
 
   window.addEventListener("zain:langchange", () => {
     renderSidebarControls();

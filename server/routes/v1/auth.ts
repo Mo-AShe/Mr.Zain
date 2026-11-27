@@ -5,6 +5,7 @@ import {
   ensureCsrfCookie,
   requireAuth,
   requireCsrf,
+  requireRole,
   setSessionCookies,
   verifySameOriginIfPresent,
 } from "../../middleware/auth.js";
@@ -12,8 +13,13 @@ import {
   loginCustomer,
   registerCustomer,
   revokeSessionById,
+  updateCustomerProfile,
 } from "../../services/auth.service.js";
-import { loginSchema, registerSchema } from "../../validators/auth.validators.js";
+import {
+  loginSchema,
+  registerSchema,
+  updateCustomerProfileSchema,
+} from "../../validators/auth.validators.js";
 
 export const authRouter = Router();
 
@@ -60,7 +66,7 @@ authRouter.post(
         fullName: payload.fullName,
         email: payload.email,
         password: payload.password,
-        phone: payload.phone ?? null,
+        phone: payload.phone,
         userAgent: req.get("user-agent") ?? null,
         ipAddress: req.ip ?? null,
       });
@@ -130,3 +136,23 @@ authRouter.get("/me", requireAuth, (req, res) => {
     user: req.auth!.user,
   });
 });
+
+authRouter.patch(
+  "/me",
+  requireAuth,
+  requireRole("customer"),
+  requireCsrf,
+  async (req, res, next) => {
+    try {
+      const payload = updateCustomerProfileSchema.parse(req.body);
+      const user = await updateCustomerProfile(req.auth!.user.id, payload);
+      res.setHeader("Cache-Control", "no-store");
+      res.json({
+        success: true,
+        user,
+      });
+    } catch (err) {
+      next(err);
+    }
+  }
+);

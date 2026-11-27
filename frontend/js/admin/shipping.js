@@ -6,14 +6,12 @@ import { getLanguage, t } from "../i18n/i18n.js";
 import { localizeGovernorate } from "../components/address-form.js";
 import {
   closeModal,
-  openConfirmDialog,
   openModal,
   showToast,
 } from "../components/ui.js";
 import { escapeHtml, formatPriceEGP } from "../utils/formatters.js";
 import {
   createAdminShippingZoneRequest,
-  deleteAdminShippingZoneRequest,
   fetchAdminShipping,
   updateAdminShippingSettingsRequest,
   updateAdminShippingZoneRequest,
@@ -473,9 +471,6 @@ export function renderShippingSection(mainEl, { onAuthError, onRender } = {}) {
                       <button type="button" class="btn btn--secondary btn--sm" data-sz-toggle="${escapeHtml(z.id)}" ${shipState.zoneBusy ? "disabled" : ""}>
                         ${escapeHtml(z.isActive ? t("adminOps.shipping.deactivateBtn", lang) : t("adminOps.shipping.activateBtn", lang))}
                       </button>
-                      <button type="button" class="btn btn--danger btn--sm" data-sz-delete="${escapeHtml(z.id)}" ${shipState.zoneBusy ? "disabled" : ""}>
-                        ${escapeHtml(t("adminOps.shipping.deleteBtn", lang))}
-                      </button>
                     </div>
                   </td>
                 </tr>
@@ -599,39 +594,4 @@ export function renderShippingSection(mainEl, { onAuthError, onRender } = {}) {
     });
   });
 
-  mainEl.querySelectorAll("[data-sz-delete]").forEach((btn) => {
-    btn.addEventListener("click", () => {
-      const id = btn.getAttribute("data-sz-delete");
-      const zone = shipState.zones.find((z) => z.id === id);
-      if (!zone || shipState.zoneBusy) return;
-
-      const currentLang = getLanguage();
-      openConfirmDialog({
-        title: t("adminOps.shipping.deleteBtn", currentLang),
-        message: formatTemplate(t("adminOps.shipping.deleteConfirmMsg", currentLang), {
-          name: localizeGovernorate(zone.governorate, currentLang),
-        }),
-        confirmLabel: t("adminOps.shipping.deleteBtn", currentLang),
-        cancelLabel: t("adminOps.common.cancelBtn", currentLang),
-        onConfirm: async () => {
-          shipState.zoneBusy = true;
-          onRender();
-          try {
-            await deleteAdminShippingZoneRequest(zone.id);
-            showToast(t("adminOps.shipping.zoneDeletedToast", getLanguage()), "success");
-            await loadAdminShipping({ onAuthError, onRender });
-          } catch (err) {
-            if (err && (err.status === 401 || err.status === 403)) {
-              if (typeof onAuthError === "function") await onAuthError(err);
-              return;
-            }
-            showToast(err?.message || t("adminOps.common.errorTitle", getLanguage()), "error");
-          } finally {
-            shipState.zoneBusy = false;
-            onRender();
-          }
-        },
-      });
-    });
-  });
 }

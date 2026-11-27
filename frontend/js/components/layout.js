@@ -16,7 +16,10 @@ import {
   fetchWishlist,
   getCachedWishlistCount,
 } from "../services/wishlist-service.js";
-import { fetchPublicStoreSettings } from "../services/settings-service.js";
+import {
+  fetchPublicStoreSettings,
+  getCachedPublicSettings,
+} from "../services/settings-service.js";
 import { renderAnnouncementBar } from "./announcement-bar.js";
 import { renderFooter } from "./footer.js";
 import { renderNavbar, updateHeaderCounts } from "./navbar.js";
@@ -36,9 +39,16 @@ function buildHeaderState() {
 
 function renderSharedChrome() {
   applyDocumentLanguage();
+  updateDocumentTitle();
   renderAnnouncementBar(document.getElementById("site-announcement"));
   renderNavbar(document.getElementById("site-header"), buildHeaderState());
   renderFooter(document.getElementById("site-footer"));
+}
+
+function updateDocumentTitle() {
+  const storeName = getCachedPublicSettings()?.storeInfo?.storeName?.trim();
+  if (!storeName) return;
+  document.title = document.title.replace(/MR\. ZAIN(?=$| — )/g, () => storeName);
 }
 
 function syncCountsForSession(user) {
@@ -63,6 +73,7 @@ export function initLayout(options = {}) {
 
     window.addEventListener("zain:langchange", renderSharedChrome);
     window.addEventListener("zain:settingsloaded", () => {
+      updateDocumentTitle();
       renderAnnouncementBar(document.getElementById("site-announcement"));
       renderFooter(document.getElementById("site-footer"));
     });

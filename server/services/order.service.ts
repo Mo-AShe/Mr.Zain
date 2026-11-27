@@ -27,41 +27,19 @@ import {
   getShippingSettings,
   roundCurrency,
 } from "./shipping.service.js";
+import {
+  CANCELLABLE_BY_CUSTOMER_STATUSES,
+  type OrderStatus,
+} from "./order-status.js";
 
-export const ORDER_STATUSES = [
-  "pending",
-  "confirmed",
-  "processing",
-  "shipped",
-  "delivered",
-  "cancelled",
-] as const;
-
-export type OrderStatus = (typeof ORDER_STATUSES)[number];
-
-export const PAYMENT_STATUSES = [
-  "pending",
-  "paid",
-  "failed",
-  "cancelled",
-  "refunded",
-] as const;
-
-export type PaymentStatus = (typeof PAYMENT_STATUSES)[number];
-
-export const ALLOWED_ORDER_TRANSITIONS: Record<OrderStatus, readonly OrderStatus[]> = {
-  pending: ["confirmed", "cancelled"],
-  confirmed: ["processing", "cancelled"],
-  processing: ["shipped", "cancelled"],
-  shipped: ["delivered"],
-  delivered: [],
-  cancelled: [],
-};
-
-export const CANCELLABLE_BY_CUSTOMER_STATUSES: readonly OrderStatus[] = [
-  "pending",
-  "confirmed",
-];
+export {
+  ALLOWED_ORDER_TRANSITIONS,
+  CANCELLABLE_BY_CUSTOMER_STATUSES,
+  ORDER_STATUSES,
+  PAYMENT_STATUSES,
+  isAllowedOrderTransition,
+} from "./order-status.js";
+export type { OrderStatus, PaymentStatus } from "./order-status.js";
 
 export interface ShippingAddressSnapshotDTO {
   recipientName: string;
@@ -215,8 +193,6 @@ async function getOrderDetailFromExecutor(
         totalPrice: orderItems.totalPrice,
         productId: products.id,
         productSlug: products.slug,
-        nameEn: products.nameEn,
-        nameAr: products.nameAr,
       })
       .from(orderItems)
       .leftJoin(productVariants, eq(productVariants.id, orderItems.variantId))
@@ -263,8 +239,8 @@ async function getOrderDetailFromExecutor(
     productId: item.productId ?? null,
     productSlug: item.productSlug ?? null,
     productNameSnapshot: item.productNameSnapshot,
-    name_en: item.nameEn ?? item.productNameSnapshot,
-    name_ar: item.nameAr ?? item.productNameSnapshot,
+    name_en: item.productNameSnapshot,
+    name_ar: item.productNameSnapshot,
     imageUrl: item.productId ? (primaryImageByProduct.get(item.productId) ?? null) : null,
     sizeSnapshot: item.sizeSnapshot,
     colorSnapshot: item.colorSnapshot,
@@ -317,11 +293,12 @@ async function getOrderDetailFromExecutor(
 
 export async function placeCodOrder(
   userId: string,
-  input: PlaceOrderInput & { idempotencyKey?: string }
+  input: PlaceOrderInput & { idempotencyKey?: string },
+  language: "en" | "ar" = "en"
 ): Promise<{ order: OrderDTO; alreadyExisted: boolean }> {
   const idempotencyKey = input.idempotencyKey?.trim() || undefined;
 
-  return db.transaction(async (tx) => {
+  const result = await db.transaction(async (tx) => {
     if (idempotencyKey) {
       await tx.execute(
         sql`SELECT pg_advisory_xact_lock(hashtext(${`${userId}:${idempotencyKey}`}))`
@@ -349,8 +326,11 @@ export async function placeCodOrder(
     const maintenance = await getStoreMaintenanceStatus();
     if (maintenance.isMaintenanceMode) {
       throw new AppError(
-        maintenance.maintenanceMessageEn ||
-          "Checkout is temporarily paused while the store is in maintenance mode.",
+        language === "ar"
+          ? maintenance.maintenanceMessageAr ||
+              "تم إيقاف إتمام الطلبات مؤقتاً بسبب تفعيل وضع الصيانة في المتجر."
+          : maintenance.maintenanceMessageEn ||
+              "Checkout is temporarily paused while the store is in maintenance mode.",
         503,
         "STORE_MAINTENANCE"
       );
@@ -373,6 +353,26 @@ export async function placeCodOrder(
 
     if (!address) {
       throw new AppError("Selected delivery address not found.", 404, "ADDRESS_NOT_FOUND");
+    }
+    if (
+      !address.recipientName.trim() ||
+      !address.governorate.trim() ||
+      !address.city.trim() ||
+      !address.street.trim() ||
+      !address.building?.trim()
+    ) {
+      throw new AppError(
+        "The selected delivery address is incomplete. Please update it before placing your order.",
+        400,
+        "ADDRESS_INCOMPLETE"
+      );
+    }
+    if (!/^\+201[0125]\d{8}$/.test(address.phone.trim())) {
+      throw new AppError(
+        "A valid Egyptian mobile number is required for delivery.",
+        400,
+        "PHONE_REQUIRED"
+      );
     }
 
     const [cart] = await tx
@@ -653,6 +653,18 @@ export async function placeCodOrder(
       alreadyExisted: false,
     };
   });
+
+  const { createOrderNotification } = await import("./adminNotifications.service.js");
+  try {
+    await createOrderNotification(result.order.id);
+  } catch (error) {
+    console.error(
+      "The order was committed, but creating its admin notification failed; the order request will still succeed.",
+      error instanceof Error ? error.message : "Unknown notification error."
+    );
+  }
+
+  return result;
 }
 
 export async function listCustomerOrders(
@@ -709,8 +721,6 @@ export async function listCustomerOrders(
       quantity: orderItems.quantity,
       productNameSnapshot: orderItems.productNameSnapshot,
       productId: products.id,
-      nameEn: products.nameEn,
-      nameAr: products.nameAr,
     })
     .from(orderItems)
     .leftJoin(productVariants, eq(productVariants.id, orderItems.variantId))
@@ -774,8 +784,8 @@ export async function listCustomerOrders(
       previewImageUrl: first?.productId
         ? (primaryImageByProduct.get(first.productId) ?? null)
         : null,
-      previewTitleEn: first ? (first.nameEn ?? first.productNameSnapshot) : null,
-      previewTitleAr: first ? (first.nameAr ?? first.productNameSnapshot) : null,
+      previewTitleEn: first?.productNameSnapshot ?? null,
+      previewTitleAr: first?.productNameSnapshot ?? null,
       createdAt: o.createdAt.toISOString(),
       updatedAt: o.updatedAt.toISOString(),
     };

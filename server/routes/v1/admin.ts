@@ -1,4 +1,4 @@
-import { Router } from "express";
+import express, { Router } from "express";
 import {
   ensureCsrfCookie,
   requireAdmin,
@@ -26,12 +26,18 @@ import {
   listAdminProducts,
   removeProductFromCollection,
   reorderProductImages,
+  replaceProductImage,
   updateAdminCategory,
   updateAdminCollection,
   updateAdminProduct,
   updateProductImage,
   updateProductVariant,
 } from "../../services/adminCatalog.service.js";
+import {
+  discardStagedProductImages,
+  stageProductImage,
+} from "../../services/productImageStorage.service.js";
+import { env } from "../../config/env.js";
 import {
   getAdminDashboardOverview,
   getAdminDashboardSales,
@@ -77,6 +83,22 @@ import {
   updateAdminHomepageSettings,
 } from "../../services/adminSettings.service.js";
 import {
+  addNotificationSseClient,
+  listAdminNotifications,
+  markAllAdminNotificationsRead,
+  markAdminNotificationRead,
+} from "../../services/adminNotifications.service.js";
+import { adminNotificationsQuerySchema } from "../../validators/adminNotifications.validators.js";
+import {
+  createAdminBanner,
+  deleteAdminBanner,
+  updateAdminBanner,
+} from "../../services/adminBanners.service.js";
+import {
+  createAdminBannerSchema,
+  updateAdminBannerSchema,
+} from "../../validators/adminBanners.validators.js";
+import {
   addCollectionProductSchema,
   adminCategoriesQuerySchema,
   adminCollectionsQuerySchema,
@@ -85,10 +107,11 @@ import {
   createAdminCategorySchema,
   createAdminCollectionSchema,
   createAdminProductSchema,
-  createProductImageSchema,
   createVariantSchema,
   imageParamsSchema,
   reorderProductImagesSchema,
+  stagedImageParamsSchema,
+  stagedProductImageSchema,
   updateAdminCategorySchema,
   updateAdminCollectionSchema,
   updateAdminProductSchema,
@@ -178,6 +201,55 @@ adminRouter.get("/dashboard/sales", async (req, res, next) => {
   }
 });
 
+adminRouter.get("/notifications", async (req, res, next) => {
+  try {
+    const query = adminNotificationsQuerySchema.parse(req.query);
+    const result = await listAdminNotifications(req.auth!.user.id, query.limit);
+    res.setHeader("Cache-Control", "no-store");
+    res.json({ success: true, ...result });
+  } catch (err) {
+    next(err);
+  }
+});
+
+adminRouter.post("/notifications/read-all", async (req, res, next) => {
+  try {
+    await markAllAdminNotificationsRead(req.auth!.user.id);
+    res.setHeader("Cache-Control", "no-store");
+    res.json({ success: true });
+  } catch (err) {
+    next(err);
+  }
+});
+
+adminRouter.post("/notifications/:id/read", async (req, res, next) => {
+  try {
+    const { id } = uuidParamSchema.parse(req.params);
+    await markAdminNotificationRead(req.auth!.user.id, id);
+    res.setHeader("Cache-Control", "no-store");
+    res.json({ success: true });
+  } catch (err) {
+    next(err);
+  }
+});
+
+adminRouter.get("/notifications/stream", (req, res) => {
+  res.setHeader("Content-Type", "text/event-stream");
+  res.setHeader("Cache-Control", "no-cache, no-transform");
+  res.setHeader("Connection", "keep-alive");
+  res.setHeader("X-Accel-Buffering", "no");
+  res.flushHeaders();
+  res.write(": connected\n\n");
+
+  const removeClient = addNotificationSseClient(req.auth!.user.id, res);
+  const keepAlive = setInterval(() => res.write(": keep-alive\n\n"), 20_000);
+
+  req.on("close", () => {
+    clearInterval(keepAlive);
+    removeClient();
+  });
+});
+
 // ============================================================================
 // Products CRUD
 // ============================================================================
@@ -198,7 +270,7 @@ adminRouter.get("/products", async (req, res, next) => {
 adminRouter.post("/products", async (req, res, next) => {
   try {
     const input = createAdminProductSchema.parse(req.body);
-    const product = await createAdminProduct(input);
+    const product = await createAdminProduct(input, req.auth!.user.id);
     res.status(201).json({
       success: true,
       product,
@@ -297,18 +369,67 @@ adminRouter.delete("/products/:id/variants/:variantId", async (req, res, next) =
 });
 
 // ============================================================================
-// Product Images CRUD (URL-based gallery management)
+// Product image uploads and gallery management
 // ============================================================================
+
+adminRouter.post(
+  "/products/images/staged",
+  express.raw({
+    type: ["image/jpeg", "image/png", "image/webp"],
+    limit: env.maxUploadBytes,
+  }),
+  async (req, res, next) => {
+    try {
+      if (!Buffer.isBuffer(req.body)) {
+        throw new AppError("Upload a JPEG, PNG, or WebP image.", 415, "INVALID_IMAGE_TYPE");
+      }
+      const uploadId = await stageProductImage(
+        req.auth!.user.id,
+        req.body,
+        req.get("content-type") ?? ""
+      );
+      res.status(201).json({ success: true, uploadId });
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+adminRouter.delete("/products/images/staged/:uploadId", async (req, res, next) => {
+  try {
+    const { uploadId } = stagedImageParamsSchema.parse(req.params);
+    await discardStagedProductImages(req.auth!.user.id, [uploadId]);
+    res.json({ success: true });
+  } catch (err) {
+    next(err);
+  }
+});
 
 adminRouter.post("/products/:id/images", async (req, res, next) => {
   try {
     const { id } = uuidParamSchema.parse(req.params);
-    const input = createProductImageSchema.parse(req.body);
-    const image = await addProductImage(id, input);
+    const { uploadId } = stagedProductImageSchema.parse(req.body);
+    const image = await addProductImage(id, req.auth!.user.id, uploadId);
     res.status(201).json({
       success: true,
       image,
     });
+  } catch (err) {
+    next(err);
+  }
+});
+
+adminRouter.put("/products/:id/images/:imageId", async (req, res, next) => {
+  try {
+    const { id, imageId } = imageParamsSchema.parse(req.params);
+    const { uploadId } = stagedProductImageSchema.parse(req.body);
+    const image = await replaceProductImage(
+      id,
+      imageId,
+      req.auth!.user.id,
+      uploadId
+    );
+    res.json({ success: true, image });
   } catch (err) {
     next(err);
   }
@@ -615,7 +736,11 @@ adminRouter.patch("/inventory/:variantId/threshold", async (req, res, next) => {
   try {
     const { variantId } = inventoryVariantParamSchema.parse(req.params);
     const input = updateLowStockThresholdSchema.parse(req.body);
-    const item = await updateVariantLowStockThreshold(variantId, input);
+    const item = await updateVariantLowStockThreshold(
+      variantId,
+      input,
+      req.auth!.user.id
+    );
     res.json({
       success: true,
       item,
@@ -931,6 +1056,38 @@ adminRouter.patch("/settings/homepage", async (req, res, next) => {
       success: true,
       homepage,
     });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Homepage banner management
+adminRouter.post("/banners", async (req, res, next) => {
+  try {
+    const input = createAdminBannerSchema.parse(req.body);
+    const banner = await createAdminBanner(req.auth!.user.id, input);
+    res.status(201).json({ success: true, banner });
+  } catch (err) {
+    next(err);
+  }
+});
+
+adminRouter.patch("/banners/:id", async (req, res, next) => {
+  try {
+    const { id } = uuidParamSchema.parse(req.params);
+    const input = updateAdminBannerSchema.parse(req.body);
+    const banner = await updateAdminBanner(id, req.auth!.user.id, input);
+    res.json({ success: true, banner });
+  } catch (err) {
+    next(err);
+  }
+});
+
+adminRouter.delete("/banners/:id", async (req, res, next) => {
+  try {
+    const { id } = uuidParamSchema.parse(req.params);
+    await deleteAdminBanner(id);
+    res.json({ success: true });
   } catch (err) {
     next(err);
   }

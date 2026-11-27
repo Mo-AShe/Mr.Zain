@@ -7,7 +7,6 @@ import { initLayout } from "../components/layout.js";
 import { createGarmentPlaceholder, inferGarmentType } from "../components/placeholders.js";
 import { createProductCard } from "../components/product-card.js";
 import {
-  openModal,
   renderEmptyState,
   renderErrorState,
   renderLoadingState,
@@ -17,14 +16,18 @@ import { getLanguage, t } from "../i18n/i18n.js";
 import {
   fetchCurrentUser,
   getCachedUser,
+  hasCheckedAuthSession,
   redirectToAuth,
 } from "../services/auth-service.js";
 import { addToCart } from "../services/cart-service.js";
 import { fetchProductBySlug } from "../services/catalog-service.js";
+import { getCachedPublicSettings } from "../services/settings-service.js";
 import {
   addToWishlist,
+  fetchWishlist,
+  hasLoadedWishlist,
   getCachedWishlistIds,
-  toggleWishlistItem,
+  removeFromWishlist,
 } from "../services/wishlist-service.js";
 import {
   escapeHtml,
@@ -82,35 +85,6 @@ function findVariant(color, size) {
   );
 }
 
-function openSizeGuideModal() {
-  const lang = getLanguage();
-  const wrapper = document.createElement("div");
-  wrapper.innerHTML = `
-    <p class="text-muted" style="font-size: 0.875rem;">${escapeHtml(t("pdp.sizeGuideIntro", lang))}</p>
-    <table class="size-table">
-      <thead>
-        <tr>
-          <th>${escapeHtml(t("pdp.sizeColSize", lang))}</th>
-          <th>${escapeHtml(t("pdp.sizeColChest", lang))}</th>
-          <th>${escapeHtml(t("pdp.sizeColLength", lang))}</th>
-          <th>${escapeHtml(t("pdp.sizeColShoulder", lang))}</th>
-        </tr>
-      </thead>
-      <tbody>
-        <tr><td>S</td><td>58</td><td>68</td><td>54</td></tr>
-        <tr><td>M</td><td>61</td><td>71</td><td>56</td></tr>
-        <tr><td>L</td><td>64</td><td>74</td><td>58</td></tr>
-        <tr><td>XL</td><td>67</td><td>77</td><td>60</td></tr>
-      </tbody>
-    </table>
-  `;
-
-  openModal({
-    title: t("pdp.sizeGuideTitle", lang),
-    content: wrapper,
-  });
-}
-
 function renderProductPage() {
   const root = document.getElementById("pdp-root");
   const breadcrumb = document.getElementById("pdp-breadcrumb");
@@ -151,8 +125,21 @@ function renderProductPage() {
       : pickLocalized(currentProduct, "category", lang);
   const desc = pickLocalized(currentProduct, "description", lang) || t("pdp.noDescription", lang);
   const garmentType = inferGarmentType(currentProduct);
+  const rawFreeShippingThreshold =
+    getCachedPublicSettings()?.shipping?.freeShippingThreshold;
+  const hasFreeShippingThreshold =
+    rawFreeShippingThreshold !== null &&
+    rawFreeShippingThreshold !== undefined &&
+    Number.isFinite(Number(rawFreeShippingThreshold));
+  const shippingSummaryText = hasFreeShippingThreshold
+    ? t("pdp.shippingSummaryText", lang).replace(
+        "{amount}",
+        formatPriceEGP(Number(rawFreeShippingThreshold), lang)
+      )
+    : t("pdp.shippingSummaryTextPending", lang);
 
-  document.title = `${title} — MR. ZAIN`;
+  const storeName = getCachedPublicSettings()?.storeInfo?.storeName?.trim() || "MR. ZAIN";
+  document.title = `${title} — ${storeName}`;
 
   if (breadcrumb) {
     breadcrumb.innerHTML = `
@@ -193,8 +180,14 @@ function renderProductPage() {
   const wishlistIds = getCachedUser() ? getCachedWishlistIds() : new Set();
   const isWishlisted = wishlistIds.has(currentProduct.id);
 
-  let stockText = variants.length === 0 ? t("pdp.noVariants", lang) : t("pdp.outOfStock", lang);
-  let stockClass = "pdp-stock-line--out";
+  let stockText = activeVariant
+    ? t("pdp.outOfStock", lang)
+    : variants.length > 0
+      ? selectedColor
+        ? t("pdp.selectVariantPrompt", lang)
+        : t("pdp.selectColorFirst", lang)
+      : t("pdp.noVariants", lang);
+  let stockClass = activeVariant ? "pdp-stock-line--out" : "";
   if (stock > 5) {
     stockText = t("pdp.inStockCount", lang).replace("{count}", String(stock));
     stockClass = "pdp-stock-line--ok";
@@ -235,11 +228,22 @@ function renderProductPage() {
         <p class="text-muted">${escapeHtml(desc)}</p>
 
         ${
+          variants.length > 0
+            ? `<p class="pdp-variant-hint">${escapeHtml(t("pdp.variantSelectionInstruction", lang))}</p>`
+            : ""
+        }
+
+        ${
           colors.length > 0
             ? `
           <div>
             <div class="pdp-option-header">
-              <span class="pdp-option-label">${escapeHtml(t("pdp.selectColor", lang))}: ${escapeHtml(selectedColorLabel)}</span>
+              <span class="pdp-option-label">${escapeHtml(t("pdp.selectColor", lang))}: ${escapeHtml(selectedColorLabel || t("pdp.chooseColor", lang))}</span>
+              ${
+                selectedColor
+                  ? `<button type="button" id="pdp-clear-color" class="btn btn--ghost btn--sm pdp-option-clear" aria-label="${escapeHtml(t("pdp.clearColorSelection", lang))}">${escapeHtml(t("pdp.clearSelection", lang))}</button>`
+                  : ""
+              }
             </div>
             <div class="pdp-swatches" id="pdp-colors"></div>
           </div>
@@ -252,10 +256,14 @@ function renderProductPage() {
             ? `
           <div>
             <div class="pdp-option-header">
-              <span class="pdp-option-label">${escapeHtml(t("pdp.selectSize", lang))}: ${escapeHtml(selectedSize)}</span>
-              <button type="button" id="pdp-size-guide-btn" class="btn btn--ghost btn--sm">
-                ${escapeHtml(t("pdp.sizeGuide", lang))}
-              </button>
+              <span class="pdp-option-label">${escapeHtml(t("pdp.selectSize", lang))}: ${escapeHtml(selectedSize || t("pdp.chooseSize", lang))}</span>
+              <div class="pdp-option-actions">
+                ${
+                  selectedSize
+                    ? `<button type="button" id="pdp-clear-size" class="btn btn--ghost btn--sm pdp-option-clear" aria-label="${escapeHtml(t("pdp.clearSizeSelection", lang))}">${escapeHtml(t("pdp.clearSelection", lang))}</button>`
+                    : ""
+                }
+              </div>
             </div>
             <div class="pdp-sizes" id="pdp-sizes"></div>
           </div>
@@ -272,18 +280,18 @@ function renderProductPage() {
             <button type="button" class="qty-stepper__btn" id="pdp-qty-inc" ${stock <= 0 || selectedQty >= stock ? "disabled" : ""} aria-label="+">+</button>
           </div>
 
-          <button type="button" id="pdp-add-cart" class="btn btn--primary" style="flex: 1;" ${stock <= 0 ? "disabled" : ""}>
-            ${escapeHtml(stock <= 0 ? t("pdp.outOfStock", lang) : t("pdp.addToCart", lang))}
+          <button type="button" id="pdp-add-cart" class="btn btn--primary" style="flex: 1;" ${variants.length === 0 || (activeVariant && stock <= 0) ? "disabled" : ""}>
+            ${escapeHtml(activeVariant && stock <= 0 ? t("pdp.outOfStock", lang) : t("pdp.addToCart", lang))}
           </button>
 
-          <button type="button" id="pdp-wishlist-btn" class="btn btn--secondary" aria-pressed="${isWishlisted}">
+          <button type="button" id="pdp-wishlist-btn" class="btn btn--secondary" aria-pressed="${isWishlisted}" ${!hasCheckedAuthSession() || (getCachedUser()?.role === "customer" && !hasLoadedWishlist()) ? "disabled" : ""}>
             ${escapeHtml(isWishlisted ? t("pdp.savedWishlist", lang) : t("pdp.addToWishlist", lang))}
           </button>
         </div>
 
         <div class="pdp-shipping-box">
           <strong>${escapeHtml(t("pdp.shippingSummaryTitle", lang))}</strong>
-          <span class="text-muted">${escapeHtml(t("pdp.shippingSummaryText", lang))}</span>
+          <span class="text-muted">${escapeHtml(shippingSummaryText)}</span>
         </div>
 
         <div class="pdp-accordion">
@@ -368,6 +376,10 @@ function renderProductPage() {
     const btn = document.createElement("button");
     btn.type = "button";
     btn.className = `pdp-color-btn ${colorObj.color === selectedColor ? "is-active" : ""}`;
+    btn.setAttribute("aria-pressed", String(colorObj.color === selectedColor));
+    btn.disabled = !variants.some(
+      (variant) => variant.color === colorObj.color && getVariantStock(variant) > 0
+    );
 
     const dot = document.createElement("span");
     dot.className = "color-dot";
@@ -378,13 +390,15 @@ function renderProductPage() {
 
     btn.append(dot, text);
     btn.addEventListener("click", () => {
-      selectedColor = colorObj.color;
-      const candidate = findVariant(selectedColor, selectedSize);
-      if (!candidate || getVariantStock(candidate) <= 0) {
-        const firstAvailable = variants.find(
-          (v) => v.color === selectedColor && getVariantStock(v) > 0
-        );
-        if (firstAvailable) selectedSize = firstAvailable.size;
+      if (selectedColor === colorObj.color) {
+        selectedColor = "";
+        selectedSize = "";
+      } else {
+        selectedColor = colorObj.color;
+        const candidate = findVariant(selectedColor, selectedSize);
+        if (!candidate || getVariantStock(candidate) <= 0) {
+          selectedSize = "";
+        }
       }
       selectedQty = 1;
       renderProductPage();
@@ -395,15 +409,19 @@ function renderProductPage() {
   // Populate Sizes (Visibly disable unavailable variants)
   const sizesEl = document.getElementById("pdp-sizes");
   sizes.forEach((size) => {
-    const variant = findVariant(selectedColor, size);
-    const available = Boolean(variant && getVariantStock(variant) > 0);
     const btn = document.createElement("button");
     btn.type = "button";
     btn.className = `pdp-size-btn ${size === selectedSize ? "is-active" : ""}`;
     btn.textContent = size;
-    btn.disabled = !available;
+    btn.setAttribute("aria-pressed", String(size === selectedSize));
+    btn.disabled = !selectedColor || !variants.some(
+      (variant) =>
+        variant.size === size &&
+        variant.color === selectedColor &&
+        getVariantStock(variant) > 0
+    );
     btn.addEventListener("click", () => {
-      selectedSize = size;
+      selectedSize = selectedSize === size ? "" : size;
       selectedQty = 1;
       renderProductPage();
     });
@@ -411,7 +429,17 @@ function renderProductPage() {
   });
 
   // Bind Controls
-  document.getElementById("pdp-size-guide-btn")?.addEventListener("click", openSizeGuideModal);
+  document.getElementById("pdp-clear-color")?.addEventListener("click", () => {
+    selectedColor = "";
+    selectedSize = "";
+    selectedQty = 1;
+    renderProductPage();
+  });
+  document.getElementById("pdp-clear-size")?.addEventListener("click", () => {
+    selectedSize = "";
+    selectedQty = 1;
+    renderProductPage();
+  });
 
   document.getElementById("pdp-qty-dec")?.addEventListener("click", () => {
     if (selectedQty > 1) {
@@ -482,7 +510,12 @@ function renderProductPage() {
       if (err && (err.code === "INSUFFICIENT_STOCK" || err.code === "OUT_OF_STOCK")) {
         showToast(err.message || t("pdp.stockConflictError", updatedLang), "error", 4500);
       } else {
-        showToast(t("ui.actionFailed", updatedLang), "error");
+        showToast(
+          err?.status === 403 && err?.code === "FORBIDDEN"
+            ? t("ui.customerOnlyAction", updatedLang)
+            : t("ui.actionFailed", updatedLang),
+          "error"
+        );
       }
     } finally {
       const updatedLang = getLanguage();
@@ -504,11 +537,16 @@ function renderProductPage() {
 
     wishBtn.disabled = true;
     try {
-      const wish = await toggleWishlistItem(currentProduct.id);
+      const nextState = wishBtn.getAttribute("aria-pressed") !== "true";
+      if (nextState) {
+        await addToWishlist(currentProduct.id);
+      } else {
+        await removeFromWishlist(currentProduct.id);
+      }
       const currentLang = getLanguage();
       showToast(
-        t(wish.added ? "ui.wishlistAdded" : "ui.wishlistRemoved", currentLang),
-        wish.added ? "success" : "info"
+        t(nextState ? "ui.wishlistAdded" : "ui.wishlistRemoved", currentLang),
+        nextState ? "success" : "info"
       );
       renderProductPage();
     } catch (err) {
@@ -519,7 +557,12 @@ function renderProductPage() {
         redirectToAuth(`${url.pathname}${url.search}`);
         return;
       }
-      showToast(t("ui.actionFailed", getLanguage()), "error");
+      showToast(
+        err?.status === 403 && err?.code === "FORBIDDEN"
+          ? t("ui.customerOnlyAction", getLanguage())
+          : t("ui.actionFailed", getLanguage()),
+        "error"
+      );
     } finally {
       wishBtn.disabled = false;
     }
@@ -539,7 +582,7 @@ function renderProductPage() {
         const card = createProductCard(rel, {
           lang,
           isWishlisted: relWishlistIds.has(rel.id),
-          onToggleWishlist: async (item, _nextState, relWishBtn) => {
+          onToggleWishlist: async (item, nextState, relWishBtn) => {
             if (!getCachedUser()) {
               const url = new URL(window.location.href);
               url.searchParams.set("pendingAction", "wishlist");
@@ -550,20 +593,24 @@ function renderProductPage() {
 
             if (relWishBtn) relWishBtn.disabled = true;
             try {
-              const wish = await toggleWishlistItem(item.id);
+              if (nextState) {
+                await addToWishlist(item.id);
+              } else {
+                await removeFromWishlist(item.id);
+              }
               const currentLang = getLanguage();
               if (relWishBtn) {
-                relWishBtn.setAttribute("aria-pressed", String(wish.added));
+                relWishBtn.setAttribute("aria-pressed", String(nextState));
                 relWishBtn.setAttribute(
                   "aria-label",
-                  wish.added
+                  nextState
                     ? t("product.removeFromWishlist", currentLang)
                     : t("product.addToWishlist", currentLang)
                 );
               }
               showToast(
-                t(wish.added ? "ui.wishlistAdded" : "ui.wishlistRemoved", currentLang),
-                wish.added ? "success" : "info"
+                t(nextState ? "ui.wishlistAdded" : "ui.wishlistRemoved", currentLang),
+                nextState ? "success" : "info"
               );
             } catch (err) {
               if (err && err.status === 401) {
@@ -573,7 +620,12 @@ function renderProductPage() {
                 redirectToAuth(`${url.pathname}${url.search}`);
                 return;
               }
-              showToast(t("ui.actionFailed", getLanguage()), "error");
+              showToast(
+                err?.status === 403 && err?.code === "FORBIDDEN"
+                  ? t("ui.customerOnlyAction", getLanguage())
+                  : t("ui.actionFailed", getLanguage()),
+                "error"
+              );
             } finally {
               if (relWishBtn) relWishBtn.disabled = false;
             }
@@ -605,15 +657,6 @@ async function loadProductPage() {
 
   try {
     currentProduct = await fetchProductBySlug(requestedSlug);
-    if (currentProduct) {
-      const variants = Array.isArray(currentProduct.variants) ? currentProduct.variants : [];
-      const inStockVariant =
-        variants.find((v) => getVariantStock(v) > 0) || variants[0];
-      if (inStockVariant) {
-        selectedColor = inStockVariant.color;
-        selectedSize = inStockVariant.size;
-      }
-    }
   } catch (err) {
     loadError = err;
   }
@@ -668,6 +711,10 @@ async function processPendingPdpIntent(pending) {
   } catch (err) {
     if (err && (err.code === "INSUFFICIENT_STOCK" || err.code === "OUT_OF_STOCK")) {
       showToast(err.message || t("pdp.stockConflictError", getLanguage()), "error");
+    } else if (err?.status === 403 && err?.code === "FORBIDDEN") {
+      showToast(t("ui.customerOnlyAction", getLanguage()), "error");
+    } else if (pending.action === "wishlist" || pending.action === "cart") {
+      showToast(err?.message || t("ui.actionFailed", getLanguage()), "error");
     }
   }
 }
@@ -706,5 +753,23 @@ document.addEventListener("DOMContentLoaded", async () => {
   window.addEventListener("zain:authchange", () => {
     if (currentProduct) renderProductPage();
   });
+  fetchCurrentUser()
+    .then((user) => (user?.role === "customer" ? fetchWishlist() : null))
+    .then(() => {
+      if (currentProduct) renderProductPage();
+    })
+    .catch((err) => {
+      if (err?.status !== 401) {
+        showToast(
+          err?.status === 403 && err?.code === "FORBIDDEN"
+            ? t("ui.customerOnlyAction", getLanguage())
+            : err?.message || t("ui.actionFailed", getLanguage()),
+          "error"
+        );
+      }
+    });
   window.addEventListener("zain:langchange", renderProductPage);
+  window.addEventListener("zain:settingsloaded", () => {
+    if (currentProduct) renderProductPage();
+  });
 });

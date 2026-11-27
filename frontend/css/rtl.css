@@ -39,3 +39,11 @@
 [dir="rtl"] .product-card__price-row {
   direction: rtl;
 }
+
+[dir="rtl"] .main-nav__link {
+  letter-spacing: 0;
+}
+
+[dir="rtl"] .hero__visual-caption {
+  letter-spacing: 0;
+}

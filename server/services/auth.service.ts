@@ -1,10 +1,11 @@
 import bcrypt from "bcryptjs";
 import crypto from "node:crypto";
-import { and, eq, gt, isNull } from "drizzle-orm";
+import { and, eq, gt, isNull, or } from "drizzle-orm";
 import { env } from "../config/env.js";
 import { db } from "../db/index.js";
 import { roles, sessions, users } from "../db/schema.js";
 import { AppError } from "../middleware/errorHandler.js";
+import type { UpdateCustomerProfileInput } from "../validators/auth.validators.js";
 
 const BCRYPT_COST = 12;
 // Precomputed valid bcrypt hash used to mitigate user-enumeration timing differences
@@ -24,7 +25,7 @@ export interface SafeAuthUserDTO {
 export interface SessionAuthContext {
   user: SafeAuthUserDTO;
   sessionId: string;
-  expiresAt: Date;
+  expiresAt: Date | null;
   rememberMe: boolean;
 }
 
@@ -107,12 +108,12 @@ export async function registerCustomer(input: {
   fullName: string;
   email: string;
   password: string;
-  phone?: string | null;
+  phone: string;
   userAgent?: string | null;
   ipAddress?: string | null;
 }) {
   const normalizedEmail = input.email.trim().toLowerCase();
-  const normalizedPhone = input.phone ?? null;
+  const normalizedPhone = input.phone;
 
   const [existingEmail] = await db
     .select({ id: users.id })
@@ -128,20 +129,18 @@ export async function registerCustomer(input: {
     );
   }
 
-  if (normalizedPhone) {
-    const [existingPhone] = await db
-      .select({ id: users.id })
-      .from(users)
-      .where(eq(users.phone, normalizedPhone))
-      .limit(1);
+  const [existingPhone] = await db
+    .select({ id: users.id })
+    .from(users)
+    .where(eq(users.phone, normalizedPhone))
+    .limit(1);
 
-    if (existingPhone) {
-      throw new AppError(
-        "An account with this phone number already exists.",
-        409,
-        "PHONE_ALREADY_EXISTS"
-      );
-    }
+  if (existingPhone) {
+    throw new AppError(
+      "An account with this phone number already exists.",
+      409,
+      "PHONE_ALREADY_EXISTS"
+    );
   }
 
   const [customerRole] = await db
@@ -161,7 +160,6 @@ export async function registerCustomer(input: {
   const passwordHash = await hashPassword(input.password);
   const rawSessionToken = generateSessionToken();
   const tokenHash = hashSessionToken(rawSessionToken);
-  const expiresAt = new Date(Date.now() + env.sessionTtlMs);
 
   try {
     const result = await db.transaction(async (tx) => {
@@ -193,7 +191,6 @@ export async function registerCustomer(input: {
           rememberMe: false,
           userAgent: input.userAgent ? input.userAgent.slice(0, 255) : null,
           ipAddress: input.ipAddress ? input.ipAddress.slice(0, 64) : null,
-          expiresAt,
         })
         .returning({
           id: sessions.id,
@@ -224,6 +221,95 @@ export async function registerCustomer(input: {
         "An account with this email or phone already exists.",
         409,
         "ACCOUNT_ALREADY_EXISTS"
+      );
+    }
+    throw err;
+  }
+}
+
+export async function updateCustomerProfile(
+  userId: string,
+  input: UpdateCustomerProfileInput
+) {
+  const [customer] = await db
+    .select({
+      id: users.id,
+      fullName: users.fullName,
+      email: users.email,
+      phone: users.phone,
+      passwordHash: users.passwordHash,
+      createdAt: users.createdAt,
+      roleName: roles.name,
+    })
+    .from(users)
+    .innerJoin(roles, eq(roles.id, users.roleId))
+    .where(eq(users.id, userId))
+    .limit(1);
+
+  if (!customer || customer.roleName !== "customer") {
+    throw new AppError("Customer account not found.", 404, "CUSTOMER_NOT_FOUND");
+  }
+
+  const emailChanged = customer.email !== input.email;
+  if (emailChanged) {
+    if (!input.currentPassword) {
+      throw new AppError(
+        "Enter your current password to change your email address.",
+        400,
+        "CURRENT_PASSWORD_REQUIRED"
+      );
+    }
+    if (!(await bcrypt.compare(input.currentPassword, customer.passwordHash))) {
+      throw new AppError("Current password is incorrect.", 400, "CURRENT_PASSWORD_INVALID");
+    }
+  }
+
+  try {
+    const [updatedUser] = await db
+      .update(users)
+      .set({
+        fullName: input.fullName,
+        email: input.email,
+        phone: input.phone,
+        ...(emailChanged ? { isVerified: false } : {}),
+        updatedAt: new Date(),
+      })
+      .where(eq(users.id, userId))
+      .returning({
+        id: users.id,
+        fullName: users.fullName,
+        email: users.email,
+        phone: users.phone,
+        isVerified: users.isVerified,
+        createdAt: users.createdAt,
+      });
+
+    if (!updatedUser) {
+      throw new AppError("Customer account not found.", 404, "CUSTOMER_NOT_FOUND");
+    }
+
+    return toSafeAuthUser({ ...updatedUser, roleName: customer.roleName });
+  } catch (err: unknown) {
+    const pgCode =
+      typeof err === "object" && err !== null && "code" in err
+        ? String((err as { code?: unknown }).code)
+        : "";
+    if (pgCode === "23505") {
+      const constraint =
+        typeof err === "object" && err !== null && "constraint" in err
+          ? String((err as { constraint?: unknown }).constraint)
+          : "";
+      if (constraint === "users_email_unique") {
+        throw new AppError(
+          "An account with this email address already exists.",
+          409,
+          "EMAIL_ALREADY_EXISTS"
+        );
+      }
+      throw new AppError(
+        "An account with this phone number already exists.",
+        409,
+        "PHONE_ALREADY_EXISTS"
       );
     }
     throw err;
@@ -275,10 +361,8 @@ export async function loginCustomer(input: {
     );
   }
 
-  const ttlMs = rememberMe ? env.rememberMeTtlMs : env.sessionTtlMs;
   const rawSessionToken = generateSessionToken();
   const tokenHash = hashSessionToken(rawSessionToken);
-  const expiresAt = new Date(Date.now() + ttlMs);
 
   const [createdSession] = await db
     .insert(sessions)
@@ -288,7 +372,6 @@ export async function loginCustomer(input: {
       rememberMe,
       userAgent: input.userAgent ? input.userAgent.slice(0, 255) : null,
       ipAddress: input.ipAddress ? input.ipAddress.slice(0, 64) : null,
-      expiresAt,
     })
     .returning({
       id: sessions.id,
@@ -333,7 +416,7 @@ export async function getSessionAuthByToken(
       and(
         eq(sessions.tokenHash, tokenHash),
         isNull(sessions.revokedAt),
-        gt(sessions.expiresAt, now)
+        or(isNull(sessions.expiresAt), gt(sessions.expiresAt, now))
       )
     )
     .limit(1);

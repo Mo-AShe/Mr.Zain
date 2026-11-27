@@ -46,21 +46,16 @@ export function setSessionCookies(
   session: {
     rawSessionToken: string;
     sessionId: string;
-    rememberMe: boolean;
   }
 ): string {
   const secure = shouldUseSecureCookies(req);
   const csrfToken = createCsrfToken(session.sessionId);
-  const maxAgeOption = session.rememberMe
-    ? { maxAge: env.rememberMeTtlMs }
-    : {};
 
   res.cookie(env.sessionCookieName, session.rawSessionToken, {
     httpOnly: true,
     secure,
     sameSite: "lax",
     path: "/",
-    ...maxAgeOption,
   });
 
   res.cookie(env.csrfCookieName, csrfToken, {
@@ -68,7 +63,6 @@ export function setSessionCookies(
     secure,
     sameSite: "lax",
     path: "/",
-    ...maxAgeOption,
   });
 
   return csrfToken;
@@ -77,7 +71,7 @@ export function setSessionCookies(
 export function ensureCsrfCookie(
   req: Request,
   res: Response,
-  session: { sessionId: string; rememberMe: boolean }
+  session: { sessionId: string }
 ): void {
   const cookies = parseCookies(req.headers.cookie);
   const existing = cookies[env.csrfCookieName];
@@ -92,7 +86,6 @@ export function ensureCsrfCookie(
     secure,
     sameSite: "lax",
     path: "/",
-    ...(session.rememberMe ? { maxAge: env.rememberMeTtlMs } : {}),
   });
 }
 

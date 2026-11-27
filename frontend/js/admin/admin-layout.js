@@ -6,6 +6,8 @@
 
 import { applyDocumentLanguage, getLanguage, t, toggleLanguage } from "../i18n/i18n.js";
 import { escapeHtml } from "../utils/formatters.js";
+import { api } from "../api.js";
+import { createNotificationPoller } from "./notification-poller.js";
 
 export const ADMIN_NAV_ITEMS = [
   { key: "overview", i18nKey: "admin.navOverview", functional: true, icon: "grid" },
@@ -41,6 +43,7 @@ export function getNavItemMeta(sectionKey) {
 }
 
 export function renderAdminAuthLoading(rootEl) {
+  stopAdminNotificationPolling();
   const lang = getLanguage();
   applyDocumentLanguage(lang);
   document.title = t("admin.pageTitle", lang);
@@ -58,6 +61,7 @@ export function renderAdminAuthLoading(rootEl) {
 }
 
 export function renderAdminAccessDenied(rootEl, { onSignOut }) {
+  stopAdminNotificationPolling();
   const lang = getLanguage();
   applyDocumentLanguage(lang);
   document.title = t("admin.pageTitle", lang);
@@ -86,10 +90,57 @@ export function renderAdminAccessDenied(rootEl, { onSignOut }) {
 }
 
 let escListenerBound = false;
+let notificationPoller = null;
+let notificationPollerAdminId = null;
+let activeNotificationView = null;
+let notificationAuthRecovery = null;
+
+function stopAdminNotificationPolling() {
+  notificationPoller?.stop();
+  notificationPoller = null;
+  notificationPollerAdminId = null;
+  activeNotificationView = null;
+  notificationAuthRecovery = null;
+}
+
+function startAdminNotificationPolling(adminId, view, onAuthError) {
+  activeNotificationView = view;
+  notificationAuthRecovery = onAuthError;
+  if (notificationPoller && notificationPollerAdminId === adminId) return;
+
+  stopAdminNotificationPolling();
+  activeNotificationView = view;
+  notificationAuthRecovery = onAuthError;
+  notificationPollerAdminId = adminId;
+  notificationPoller = createNotificationPoller({
+    fetchNotifications: () => api.get("/admin/notifications?limit=50"),
+    onSuccess: (response) => {
+      activeNotificationView?.render(
+        response?.notifications || [],
+        Number(response?.unreadCount || 0)
+      );
+    },
+    onError: () => activeNotificationView?.showError(),
+    onUnauthorized: () => {
+      const recoverAuthentication = notificationAuthRecovery;
+      stopAdminNotificationPolling();
+      if (typeof recoverAuthentication === "function") {
+        void (async () => {
+          try {
+            await recoverAuthentication();
+          } catch (error) {
+            console.error("Could not revalidate the admin session after notification authorization failed.", error);
+          }
+        })();
+      }
+    },
+  });
+  notificationPoller.start();
+}
 
 export function renderAdminShell(
   rootEl,
-  { admin, activeSection, onSelectSection, onSignOut }
+  { admin, activeSection, onSelectSection, onSignOut, onOpenNotification, onAuthError }
 ) {
   const lang = getLanguage();
   applyDocumentLanguage(lang);
@@ -176,6 +227,33 @@ export function renderAdminShell(
           </div>
 
           <div class="admin-topbar__actions">
+            <div class="admin-notifications" id="admin-notifications">
+              <button
+                type="button"
+                class="admin-notification-trigger"
+                id="admin-notification-trigger"
+                aria-label="${escapeHtml(t("admin.notificationsLabel", lang))}"
+                aria-expanded="false"
+                aria-controls="admin-notification-dropdown"
+              >
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
+                  <path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9" />
+                  <path d="M13.73 21a2 2 0 0 1-3.46 0" />
+                </svg>
+                <span class="admin-notification-badge" id="admin-notification-badge" hidden>0</span>
+              </button>
+              <div class="admin-notification-dropdown" id="admin-notification-dropdown" hidden>
+                <div class="admin-notification-head">
+                  <strong>${escapeHtml(t("admin.notificationsTitle", lang))}</strong>
+                  <button type="button" id="admin-notifications-read-all" class="admin-notification-read-all">
+                    ${escapeHtml(t("admin.notificationsMarkAllRead", lang))}
+                  </button>
+                </div>
+                <div class="admin-notification-list" id="admin-notification-list">
+                  <div class="admin-notification-empty">${escapeHtml(t("admin.notificationsLoading", lang))}</div>
+                </div>
+              </div>
+            </div>
             <div class="admin-user-summary">
               <span class="admin-user-summary__name">${escapeHtml(adminName)}</span>
               <span class="admin-user-summary__sep" aria-hidden="true">·</span>
@@ -250,7 +328,102 @@ export function renderAdminShell(
   signOutBtn?.addEventListener("click", async () => {
     signOutBtn.disabled = true;
     signOutBtn.textContent = t("admin.signingOut", getLanguage());
+    stopAdminNotificationPolling();
     await onSignOut();
+  });
+
+  const trigger = document.getElementById("admin-notification-trigger");
+  const dropdown = document.getElementById("admin-notification-dropdown");
+  const badge = document.getElementById("admin-notification-badge");
+  const list = document.getElementById("admin-notification-list");
+
+  trigger?.addEventListener("click", () => {
+    const isOpen = trigger.getAttribute("aria-expanded") === "true";
+    trigger.setAttribute("aria-expanded", String(!isOpen));
+    if (dropdown) dropdown.hidden = isOpen;
+  });
+
+  const formatNotificationTime = (iso) => {
+    const lang = getLanguage();
+    const date = new Date(iso);
+    if (Number.isNaN(date.getTime())) return "";
+    return new Intl.DateTimeFormat(lang === "ar" ? "ar-EG" : "en-EG", {
+      dateStyle: "medium",
+      timeStyle: "short",
+    }).format(date);
+  };
+
+  const renderNotifications = (notifications, unreadCount) => {
+    if (badge) {
+      badge.textContent = String(unreadCount);
+      badge.hidden = unreadCount === 0;
+    }
+    if (!list) return;
+
+    const lang = getLanguage();
+    if (!Array.isArray(notifications) || notifications.length === 0) {
+      list.innerHTML = `<div class="admin-notification-empty">${escapeHtml(t("admin.notificationsEmpty", lang))}</div>`;
+      return;
+    }
+
+    list.innerHTML = notifications.map((item) => `
+      <button
+        type="button"
+        class="admin-notification-item ${item.isRead ? "is-read" : "is-unread"}"
+        data-notification-id="${escapeHtml(item.id)}"
+        data-notification-order="${escapeHtml(item.orderId)}"
+      >
+        <span class="admin-notification-item__dot" aria-hidden="true"></span>
+        <span class="admin-notification-item__body">
+          <strong>${escapeHtml(t("admin.notificationNewOrder", lang))} #${escapeHtml(item.orderNumber)}</strong>
+          <span>${escapeHtml(item.customerName)} · ${escapeHtml(`${Number(item.totalAmount).toFixed(2)} EGP`)}</span>
+          <small>${escapeHtml(formatNotificationTime(item.createdAt))} · ${escapeHtml(item.orderStatus)}</small>
+        </span>
+      </button>
+    `).join("");
+
+    list.querySelectorAll("[data-notification-id]").forEach((item) => {
+      item.addEventListener("click", async () => {
+        const notificationId = item.getAttribute("data-notification-id");
+        const orderId = item.getAttribute("data-notification-order");
+        if (notificationId) {
+          try {
+            await api.post(`/admin/notifications/${encodeURIComponent(notificationId)}/read`, {});
+          } catch {
+            // The order navigation remains available even if marking read fails.
+          }
+        }
+        if (typeof onOpenNotification === "function" && orderId) {
+          onOpenNotification(orderId);
+        }
+        notificationPoller?.refresh();
+        if (dropdown) dropdown.hidden = true;
+        trigger?.setAttribute("aria-expanded", "false");
+      });
+    });
+  };
+
+  const notificationView = {
+    render: renderNotifications,
+    showError: () => {
+      if (list) {
+        list.innerHTML = `<div class="admin-notification-empty">${escapeHtml(t("admin.notificationsError", getLanguage()))}</div>`;
+      }
+    },
+  };
+  if (admin?.id) {
+    startAdminNotificationPolling(admin.id, notificationView, onAuthError);
+  } else {
+    stopAdminNotificationPolling();
+  }
+
+  document.getElementById("admin-notifications-read-all")?.addEventListener("click", async () => {
+    try {
+      await api.post("/admin/notifications/read-all", {});
+      notificationPoller?.refresh();
+    } catch {
+      // Keep the current list visible when the mutation fails.
+    }
   });
 
   return document.getElementById("admin-main-content");

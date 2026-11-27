@@ -199,7 +199,7 @@ export async function getAdminCustomerById(
         FROM sessions s
         WHERE s.user_id = u.id
           AND s.revoked_at IS NULL
-          AND s.expires_at > now()
+          AND (s.expires_at IS NULL OR s.expires_at > now())
       ) AS active_sessions_count,
       (
         SELECT COUNT(*)::int FROM orders o WHERE o.user_id = u.id

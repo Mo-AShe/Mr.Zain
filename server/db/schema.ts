@@ -58,7 +58,7 @@ export const sessions = pgTable(
     rememberMe: boolean("remember_me").notNull().default(false),
     userAgent: varchar("user_agent", { length: 255 }),
     ipAddress: varchar("ip_address", { length: 64 }),
-    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    expiresAt: timestamp("expires_at", { withTimezone: true }),
     revokedAt: timestamp("revoked_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     lastSeenAt: timestamp("last_seen_at", { withTimezone: true }).notNull().defaultNow(),
@@ -177,7 +177,7 @@ export const productVariants = pgTable(
     productId: uuid("product_id")
       .notNull()
       .references(() => products.id, { onDelete: "cascade" }),
-    sku: varchar("sku", { length: 100 }).notNull().unique(),
+    sku: varchar("sku", { length: 100 }).notNull(),
     size: varchar("size", { length: 40 }).notNull(),
     color: varchar("color", { length: 60 }).notNull(),
     price: numeric("price", { precision: 12, scale: 2 }).notNull(),
@@ -186,10 +186,13 @@ export const productVariants = pgTable(
   },
   (table) => [
     index("product_variants_product_id_idx").on(table.productId),
-    uniqueIndex("product_variants_product_size_color_uidx").on(
+    uniqueIndex("product_variants_sku_normalized_uidx").on(
+      sql`upper(btrim(${table.sku}))`
+    ),
+    uniqueIndex("product_variants_product_size_color_normalized_uidx").on(
       table.productId,
-      table.size,
-      table.color
+      sql`lower(btrim(${table.size}))`,
+      sql`lower(btrim(${table.color}))`
     ),
     check("product_variants_price_non_negative", sql`${table.price} >= 0`),
   ]
@@ -273,6 +276,28 @@ export const inventoryMovements = pgTable(
       sql`${table.movementType} IN ('addition', 'reduction', 'reservation', 'cancellation', 'return', 'adjustment')`
     ),
     check("inventory_movements_quantity_nonzero", sql`${table.quantity} <> 0`),
+  ]
+);
+
+export const inventoryThresholdChanges = pgTable(
+  "inventory_threshold_changes",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    variantId: uuid("variant_id")
+      .notNull()
+      .references(() => productVariants.id, { onDelete: "restrict" }),
+    previousThreshold: integer("previous_threshold").notNull(),
+    newThreshold: integer("new_threshold").notNull(),
+    changedBy: uuid("changed_by").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    index("inventory_threshold_changes_variant_id_idx").on(table.variantId),
+    index("inventory_threshold_changes_created_at_idx").on(table.createdAt),
+    check("inventory_threshold_changes_previous_non_negative", sql`${table.previousThreshold} >= 0`),
+    check("inventory_threshold_changes_new_non_negative", sql`${table.newThreshold} >= 0`),
   ]
 );
 
@@ -531,6 +556,40 @@ export const couponUsages = pgTable(
     index("coupon_usages_coupon_id_idx").on(table.couponId),
     index("coupon_usages_user_id_idx").on(table.userId),
     uniqueIndex("coupon_usages_coupon_order_uidx").on(table.couponId, table.orderId),
+  ]
+);
+
+// ============================================================================
+// F. Administrator notifications
+// ============================================================================
+
+export const adminNotifications = pgTable(
+  "admin_notifications",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    orderId: uuid("order_id")
+      .notNull()
+      .references(() => orders.id, { onDelete: "cascade" })
+      .unique(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [index("admin_notifications_created_at_idx").on(table.createdAt)]
+);
+
+export const adminNotificationReads = pgTable(
+  "admin_notification_reads",
+  {
+    notificationId: uuid("notification_id")
+      .notNull()
+      .references(() => adminNotifications.id, { onDelete: "cascade" }),
+    adminId: uuid("admin_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    readAt: timestamp("read_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.notificationId, table.adminId] }),
+    index("admin_notification_reads_admin_id_idx").on(table.adminId),
   ]
 );
 

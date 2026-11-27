@@ -293,22 +293,16 @@ export async function removeWishlistItem(
       )
       .limit(1);
 
-    if (!existing) {
-      throw new AppError(
-        "Wishlist item not found.",
-        404,
-        "WISHLIST_ITEM_NOT_FOUND"
-      );
+    if (existing) {
+      await tx
+        .delete(wishlistItems)
+        .where(
+          and(
+            eq(wishlistItems.id, existing.itemId),
+            eq(wishlistItems.wishlistId, existing.wishlistId)
+          )
+        );
     }
-
-    await tx
-      .delete(wishlistItems)
-      .where(
-        and(
-          eq(wishlistItems.id, existing.itemId),
-          eq(wishlistItems.wishlistId, existing.wishlistId)
-        )
-      );
   });
 
   return getCustomerWishlist(userId);

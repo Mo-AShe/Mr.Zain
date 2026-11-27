@@ -14,6 +14,7 @@ import {
 } from "../components/ui.js";
 import { getLanguage, t } from "../i18n/i18n.js";
 import { redirectToAuth, requireCustomerAuth } from "../services/auth-service.js";
+import { getCachedPublicSettings } from "../services/settings-service.js";
 import {
   clearCart,
   fetchCart,
@@ -37,6 +38,18 @@ function renderCartView() {
   if (!root) return;
 
   const lang = getLanguage();
+  const rawFreeShippingThreshold =
+    getCachedPublicSettings()?.shipping?.freeShippingThreshold;
+  const hasFreeShippingThreshold =
+    rawFreeShippingThreshold !== null &&
+    rawFreeShippingThreshold !== undefined &&
+    Number.isFinite(Number(rawFreeShippingThreshold));
+  const shippingNote = hasFreeShippingThreshold
+    ? t("cart.summaryShippingNote", lang).replace(
+        "{amount}",
+        formatPriceEGP(Number(rawFreeShippingThreshold), lang)
+      )
+    : t("cart.summaryShippingNotePending", lang);
   root.removeAttribute("aria-busy");
 
   if (loadError) {
@@ -107,7 +120,7 @@ function renderCartView() {
           </div>
         </dl>
 
-        <p class="cart-summary-note">${escapeHtml(t("cart.summaryShippingNote", lang))}</p>
+        <p class="cart-summary-note">${escapeHtml(shippingNote)}</p>
 
         <div class="cart-summary-actions">
           ${
@@ -146,7 +159,10 @@ function renderCartView() {
 
     let stockLine = "";
     let stockLineClass = "cart-item__stock";
-    if (!item.inStock || item.availableStock <= 0) {
+    if (!item.isAvailable) {
+      stockLine = t("cart.productUnavailable", lang);
+      stockLineClass += " cart-item__stock--error";
+    } else if (!item.inStock || item.availableStock <= 0) {
       stockLine = t("cart.outOfStockWarning", lang);
       stockLineClass += " cart-item__stock--error";
     } else if (item.exceedsStock) {
@@ -229,7 +245,7 @@ function renderCartView() {
             type="button"
             class="qty-stepper__btn"
             data-cart-dec="${escapeHtml(item.id)}"
-            ${isBusy || item.quantity <= 1 ? "disabled" : ""}
+            ${isBusy || !item.isAvailable || item.quantity <= 1 ? "disabled" : ""}
             aria-label="-"
           >−</button>
           <span class="qty-stepper__value">${item.quantity}</span>
@@ -283,7 +299,12 @@ async function handleQuantityChange(item, nextQuantity) {
         // Keep current view
       }
     } else {
-      showToast(t("ui.actionFailed", getLanguage()), "error");
+      showToast(
+        err?.status === 403 && err?.code === "FORBIDDEN"
+          ? t("ui.customerOnlyAction", getLanguage())
+          : t("ui.actionFailed", getLanguage()),
+        "error"
+      );
     }
   } finally {
     busyItemIds.delete(item.id);
@@ -304,7 +325,12 @@ async function handleRemoveItem(item) {
       redirectToAuth("/pages/cart.html");
       return;
     }
-    showToast(t("ui.actionFailed", getLanguage()), "error");
+    showToast(
+      err?.status === 403 && err?.code === "FORBIDDEN"
+        ? t("ui.customerOnlyAction", getLanguage())
+        : t("ui.actionFailed", getLanguage()),
+      "error"
+    );
   } finally {
     busyItemIds.delete(item.id);
     renderCartView();
@@ -361,7 +387,12 @@ function bindCartRowHandlers() {
             redirectToAuth("/pages/cart.html");
             return;
           }
-          showToast(t("ui.actionFailed", getLanguage()), "error");
+          showToast(
+            err?.status === 403 && err?.code === "FORBIDDEN"
+              ? t("ui.customerOnlyAction", getLanguage())
+              : t("ui.actionFailed", getLanguage()),
+            "error"
+          );
         } finally {
           isClearing = false;
           renderCartView();
@@ -401,4 +432,5 @@ document.addEventListener("DOMContentLoaded", async () => {
   await loadCartPage();
 
   window.addEventListener("zain:langchange", renderCartView);
+  window.addEventListener("zain:settingsloaded", renderCartView);
 });

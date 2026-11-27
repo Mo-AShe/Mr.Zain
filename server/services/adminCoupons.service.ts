@@ -129,8 +129,8 @@ export async function listAdminCoupons(query: AdminCouponsQuery) {
 
   const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
 
-  const usedCountExpr = sql<number>`COUNT(${couponUsages.id})::int`;
-  const discountSumExpr = sql<string>`COALESCE(SUM(${orders.discountAmount}), 0)::numeric(12,2)`;
+  const usedCountExpr = sql<number>`COUNT(${couponUsages.id}) FILTER (WHERE ${orders.orderStatus} <> 'cancelled')::int`;
+  const discountSumExpr = sql<string>`COALESCE(SUM(${orders.discountAmount}) FILTER (WHERE ${orders.orderStatus} <> 'cancelled'), 0)::numeric(12,2)`;
 
   let orderByClause = [asc(coupons.code)];
   if (query.sort === "code_desc") {
@@ -206,8 +206,8 @@ export async function getAdminCouponDetail(couponId: string) {
       startsAt: coupons.startsAt,
       expiresAt: coupons.expiresAt,
       isActive: coupons.isActive,
-      usedCount: sql<number>`COUNT(${couponUsages.id})::int`,
-      totalDiscountGranted: sql<string>`COALESCE(SUM(${orders.discountAmount}), 0)::numeric(12,2)`,
+      usedCount: sql<number>`COUNT(${couponUsages.id}) FILTER (WHERE ${orders.orderStatus} <> 'cancelled')::int`,
+      totalDiscountGranted: sql<string>`COALESCE(SUM(${orders.discountAmount}) FILTER (WHERE ${orders.orderStatus} <> 'cancelled'), 0)::numeric(12,2)`,
     })
     .from(coupons)
     .leftJoin(couponUsages, eq(couponUsages.couponId, coupons.id))
@@ -246,7 +246,13 @@ export async function getAdminCouponDetail(couponId: string) {
         uniqueCustomersCount: sql<number>`COUNT(DISTINCT ${couponUsages.userId})::int`,
       })
       .from(couponUsages)
-      .where(eq(couponUsages.couponId, couponId)),
+      .innerJoin(orders, eq(orders.id, couponUsages.orderId))
+      .where(
+        and(
+          eq(couponUsages.couponId, couponId),
+          ne(orders.orderStatus, "cancelled")
+        )
+      ),
   ]);
 
   const mappedCoupon = mapCouponRow(couponRow);
@@ -342,18 +348,25 @@ export async function updateAdminCoupon(
     db
       .select({
         usedCount: sql<number>`COUNT(${couponUsages.id})::int`,
-        totalDiscountGranted: sql<string>`COALESCE(SUM(${orders.discountAmount}), 0)::numeric(12,2)`,
+        totalDiscountGranted: sql<string>`COALESCE(SUM(${orders.discountAmount}) FILTER (WHERE ${orders.orderStatus} <> 'cancelled'), 0)::numeric(12,2)`,
       })
       .from(couponUsages)
-      .leftJoin(orders, eq(orders.id, couponUsages.orderId))
-      .where(eq(couponUsages.couponId, couponId)),
+      .innerJoin(orders, eq(orders.id, couponUsages.orderId))
+      .where(
+        and(
+          eq(couponUsages.couponId, couponId),
+          ne(orders.orderStatus, "cancelled")
+        )
+      ),
     db.execute(sql`
       SELECT COALESCE(MAX(per_user_cnt), 0)::int AS max_customer_usage
       FROM (
         SELECT COUNT(*) AS per_user_cnt
-        FROM coupon_usages
-        WHERE coupon_id = ${couponId}
-        GROUP BY user_id
+        FROM coupon_usages cu
+        INNER JOIN orders o ON o.id = cu.order_id
+        WHERE cu.coupon_id = ${couponId}
+          AND o.order_status <> 'cancelled'
+        GROUP BY cu.user_id
       ) counts
     `),
   ]);

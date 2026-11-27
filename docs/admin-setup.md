@@ -4,7 +4,7 @@ This document explains how to provision the first **MR. ZAIN** administrator acc
 
 ## 1. Required Server-Side Environment Variables
 
-Set the following server-side variables in your shell session or Google AI Studio Secrets (never prefix with `VITE_` and never place real credentials in frontend files or `.env.example`):
+Set the following server-side variables in your shell session or deployment secret manager (never prefix with `VITE_` and never place real credentials in frontend files or committed configuration):
 
 - `ADMIN_EMAIL` — Valid email address for the initial administrator (normalized to lowercase).
 - `ADMIN_FULL_NAME` — Administrator display name (2–150 characters).

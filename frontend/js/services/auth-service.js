@@ -98,6 +98,14 @@ export async function registerUser({
   return cachedUser;
 }
 
+export async function updateCurrentUser(profile) {
+  const response = await api.patch("/auth/me", profile);
+  cachedUser = response?.user || null;
+  sessionChecked = true;
+  notifyAuthChange();
+  return cachedUser;
+}
+
 export async function logoutUser() {
   try {
     await api.post("/auth/logout", {});

@@ -1,7 +1,7 @@
 /**
  * MR. ZAIN — Admin Categories Management Module
- * Full CRUD over /api/v1/admin/categories with safe in-use deletion protection,
- * URL image live preview, and EN/AR bilingual RTL support.
+ * Full CRUD over /api/v1/admin/categories with safe in-use deletion protection
+ * and EN/AR bilingual RTL support.
  */
 
 import { getLanguage, t } from "../i18n/i18n.js";
@@ -39,54 +39,6 @@ function formatTemplate(template, vars) {
   );
 }
 
-function isValidImageUrlInput(raw) {
-  const trimmed = String(raw || "").trim();
-  if (!trimmed) return true; // optional for category
-  if (/\s/.test(trimmed)) return false;
-  if (trimmed.startsWith("/")) {
-    return /^\/[A-Za-z0-9/_\-.~%?&=+#]+$/.test(trimmed) && !trimmed.startsWith("//");
-  }
-  try {
-    const parsed = new URL(trimmed);
-    return parsed.protocol === "https:" || parsed.protocol === "http:";
-  } catch {
-    return false;
-  }
-}
-
-function bindLivePreview(inputEl, previewWrapEl, lang) {
-  if (!inputEl || !previewWrapEl) return;
-
-  const update = () => {
-    const val = inputEl.value.trim();
-    if (!val) {
-      previewWrapEl.innerHTML = `<span>${escapeHtml(t("adminCatalog.noImage", lang))}</span>`;
-      return;
-    }
-    if (!isValidImageUrlInput(val)) {
-      previewWrapEl.innerHTML = `<span style="color: var(--color-danger);">${escapeHtml(
-        t("adminCatalog.imageBroken", lang)
-      )}</span>`;
-      return;
-    }
-
-    const img = document.createElement("img");
-    img.src = val;
-    img.alt = "";
-    img.referrerPolicy = "no-referrer";
-    img.addEventListener("error", () => {
-      previewWrapEl.innerHTML = `<span style="color: var(--color-danger);">${escapeHtml(
-        t("adminCatalog.imageBroken", lang)
-      )}</span>`;
-    });
-    previewWrapEl.innerHTML = "";
-    previewWrapEl.appendChild(img);
-  };
-
-  inputEl.addEventListener("input", update);
-  update();
-}
-
 function openCategoryModal({ existing = null, onSaved, onAuthError }) {
   const lang = getLanguage();
   const isEdit = Boolean(existing);
@@ -109,26 +61,13 @@ function openCategoryModal({ existing = null, onSaved, onAuthError }) {
 
         <div class="field">
           <label class="field__label" for="cat-slug">${escapeHtml(t("adminCatalog.slug", lang))}</label>
-          <input id="cat-slug" class="input" type="text" maxlength="220" dir="ltr" placeholder="${escapeHtml(t("adminCatalog.slugPlaceholder", lang))}" value="${escapeHtml(existing?.slug || "")}" />
+          <input id="cat-slug" class="input" type="text" maxlength="160" dir="ltr" placeholder="${escapeHtml(t("adminCatalog.slugPlaceholder", lang))}" value="${escapeHtml(existing?.slug || "")}" />
           <span class="field__hint">${escapeHtml(t("adminCatalog.slugHint", lang))}</span>
         </div>
 
         <div class="field">
           <label class="field__label" for="cat-order">${escapeHtml(t("adminCatalog.displayOrder", lang))}</label>
           <input id="cat-order" class="input" type="number" min="0" max="10000" step="1" value="${escapeHtml(String(existing?.displayOrder ?? 0))}" />
-        </div>
-
-        <div class="field admin-form-full">
-          <label class="field__label" for="cat-image-url">${escapeHtml(t("adminCatalog.imageUrl", lang))}</label>
-          <input id="cat-image-url" class="input" type="text" maxlength="2000" dir="ltr" placeholder="${escapeHtml(t("adminCatalog.imageUrlPlaceholder", lang))}" value="${escapeHtml(existing?.imageUrl || "")}" />
-          <span class="field__hint">${escapeHtml(t("adminCatalog.imageUrlHint", lang))}</span>
-        </div>
-
-        <div class="admin-preview-box admin-form-full">
-          <div class="admin-preview-box__frame" id="cat-image-preview"></div>
-          <div class="admin-preview-box__meta">
-            <strong>${escapeHtml(t("adminCatalog.previewLabel", lang))}</strong>
-          </div>
         </div>
 
         <div class="field">
@@ -169,10 +108,6 @@ function openCategoryModal({ existing = null, onSaved, onAuthError }) {
   const form = document.getElementById("admin-category-form");
   const errBox = document.getElementById("admin-cat-form-error");
   const submitBtn = document.getElementById("cat-submit-btn");
-  const imgInput = document.getElementById("cat-image-url");
-  const imgPreview = document.getElementById("cat-image-preview");
-
-  bindLivePreview(imgInput, imgPreview, lang);
 
   document.getElementById("cat-cancel-btn")?.addEventListener("click", closeModal);
 
@@ -185,7 +120,6 @@ function openCategoryModal({ existing = null, onSaved, onAuthError }) {
     const nameAr = document.getElementById("cat-name-ar").value.trim();
     const slug = document.getElementById("cat-slug").value.trim().toLowerCase();
     const displayOrder = Number(document.getElementById("cat-order").value || 0);
-    const imageUrl = imgInput.value.trim();
     const descriptionEn = document.getElementById("cat-desc-en").value.trim();
     const descriptionAr = document.getElementById("cat-desc-ar").value.trim();
     const isActive = document.getElementById("cat-active").checked;
@@ -200,18 +134,11 @@ function openCategoryModal({ existing = null, onSaved, onAuthError }) {
       errBox.hidden = false;
       return;
     }
-    if (imageUrl && !isValidImageUrlInput(imageUrl)) {
-      errBox.textContent = t("adminCatalog.categories.errImageUrl", curLang);
-      errBox.hidden = false;
-      return;
-    }
-
     const payload = {
       nameEn,
       nameAr,
       ...(slug ? { slug } : {}),
       displayOrder: Number.isFinite(displayOrder) && displayOrder >= 0 ? Math.floor(displayOrder) : 0,
-      imageUrl: imageUrl || null,
       descriptionEn: descriptionEn || null,
       descriptionAr: descriptionAr || null,
       isActive,
@@ -374,13 +301,6 @@ export function renderCategoriesSection(mainEl, { onAuthError, onRender }) {
                 <tr>
                   <td>
                     <div class="admin-table-item">
-                      <span class="admin-thumb admin-thumb--square">
-                        ${
-                          cat.imageUrl
-                            ? `<img src="${escapeHtml(cat.imageUrl)}" alt="${escapeHtml(primaryName)}" referrerpolicy="no-referrer" onerror="this.style.display='none'" />`
-                            : `<span style="font-size: 10px;">—</span>`
-                        }
-                      </span>
                       <div class="admin-table-item__meta">
                         <span class="admin-table-item__title">${escapeHtml(primaryName)}</span>
                         <span class="admin-table-item__sub">${escapeHtml(secondaryName || "")}</span>

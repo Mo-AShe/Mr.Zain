@@ -34,7 +34,6 @@ export function renderNavbar(container, state = {}) {
     { href: "/shop.html", label: t("nav.shop", lang) },
     { href: "/collections.html", label: t("nav.collections", lang) },
     { href: "/about.html", label: t("nav.about", lang) },
-    { href: "/contact.html", label: t("nav.contact", lang) },
   ];
 
   const accountHref = user ? "/pages/account.html" : "/pages/auth.html";

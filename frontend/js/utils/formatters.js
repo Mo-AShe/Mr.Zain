@@ -13,6 +13,16 @@ export function escapeHtml(value) {
     .replace(/'/g, "&#39;");
 }
 
+export function parsePhoneNumbers(value) {
+  if (typeof value !== "string") return [];
+  return value
+    .split(/[\r\n,;]+/)
+    .map((number) => number.trim())
+    .filter(Boolean)
+    .map((number) => ({ number, digits: number.replace(/\D/g, "") }))
+    .filter((entry) => entry.digits.length > 0);
+}
+
 export function formatPriceEGP(amount, lang = "en") {
   const numeric = Number(amount);
   if (Number.isNaN(numeric)) return "";
@@ -54,6 +64,13 @@ const COLOR_MAP = {
   "royal gold": { hex: "#D4A13A", ar: "ذهبي ملكي" },
   gold: { hex: "#D4A13A", ar: "ذهبي" },
 };
+
+export const COLOR_OPTIONS = Object.entries(COLOR_MAP)
+  .filter(([name]) => name !== "gray")
+  .map(([name, meta]) => ({
+    value: name.replace(/\b[a-z]/g, (letter) => letter.toUpperCase()),
+    name_ar: meta.ar,
+  }));
 
 export function resolveColorMeta(colorName) {
   const raw = typeof colorName === "string" ? colorName.trim() : "";

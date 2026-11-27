@@ -464,7 +464,6 @@ function renderOrderDetailView(mainEl, { onAuthError, onRender }) {
             <thead>
               <tr>
                 <th>${escapeHtml(t("admin.navProducts", lang))}</th>
-                <th>${escapeHtml(t("adminOps.inventory.colSku", lang))}</th>
                 <th class="admin-table__num">${escapeHtml(t("orders.qtyLabel", lang))}</th>
                 <th class="admin-table__num">${escapeHtml(t("adminOps.orders.labelTotal", lang))}</th>
               </tr>
@@ -493,7 +492,6 @@ function renderOrderDetailView(mainEl, { onAuthError, onRender }) {
                           </div>
                         </div>
                       </td>
-                      <td class="tabular-nums">${escapeHtml(item.skuSnapshot)}</td>
                       <td class="admin-table__num tabular-nums">${escapeHtml(formatCount(item.quantity))}</td>
                       <td class="admin-table__num tabular-nums"><strong>${escapeHtml(formatPriceEGP(item.totalPrice, lang))}</strong></td>
                     </tr>
@@ -550,7 +548,7 @@ function renderOrderDetailView(mainEl, { onAuthError, onRender }) {
                       <div class="admin-timeline-item">
                         <div class="admin-timeline-item__top">
                           <span class="admin-timeline-item__title tabular-nums">
-                            ${escapeHtml(m.sku)} (${escapeHtml(m.movementType)}) ·
+                            ${escapeHtml(m.size)} / ${escapeHtml(m.color)} (${escapeHtml(m.movementType)}) ·
                             <span class="${m.quantity > 0 ? "admin-delta-pos" : "admin-delta-neg"}">${escapeHtml(`${sign}${formatCount(m.quantity)}`)}</span>
                           </span>
                           <span class="admin-timeline-item__meta tabular-nums">${escapeHtml(formatOrderDate(m.createdAt, lang))}</span>

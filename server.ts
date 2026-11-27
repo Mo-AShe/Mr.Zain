@@ -7,6 +7,7 @@ import { env } from "./server/config/env.js";
 import { checkDatabaseConnection, pool } from "./server/db/index.js";
 import { errorHandler, notFoundApiHandler } from "./server/middleware/errorHandler.js";
 import { v1Router } from "./server/routes/v1/index.js";
+import { getProductImageStorageDir } from "./server/services/productImageStorage.service.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -36,6 +37,8 @@ export function createApp() {
   // Backend REST API under /api/v1
   app.use("/api/v1", v1Router);
   app.use("/api", notFoundApiHandler);
+
+  app.use("/uploads/products", express.static(getProductImageStorageDir()));
 
   // Serve MR. ZAIN HTML5/CSS3/Vanilla JS frontend on the same port
   app.use(express.static(frontendDir));

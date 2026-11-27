@@ -1,6 +1,6 @@
 import { and, asc, desc, eq, ne, sql } from "drizzle-orm";
 import { db } from "../db/index.js";
-import { addresses, shippingZones } from "../db/schema.js";
+import { addresses, shippingZones, users } from "../db/schema.js";
 import { AppError } from "../middleware/errorHandler.js";
 import type {
   CreateAddressInput,
@@ -134,15 +134,19 @@ export async function createCustomerAddress(
   const zone = await resolveActiveGovernorate(input.governorate);
 
   const created = await db.transaction(async (tx) => {
+    await tx
+      .select({ id: users.id })
+      .from(users)
+      .where(eq(users.id, userId))
+      .for("update");
+
     const existingRows = await tx
       .select({ id: addresses.id, isDefault: addresses.isDefault })
       .from(addresses)
       .where(eq(addresses.userId, userId));
 
     const shouldBeDefault =
-      existingRows.length === 0
-        ? input.isDefault !== false
-        : Boolean(input.isDefault);
+      !existingRows.some((row) => row.isDefault) || Boolean(input.isDefault);
 
     if (shouldBeDefault && existingRows.length > 0) {
       await tx
@@ -185,6 +189,12 @@ export async function updateCustomerAddress(
       : undefined;
 
   const updated = await db.transaction(async (tx) => {
+    await tx
+      .select({ id: users.id })
+      .from(users)
+      .where(eq(users.id, userId))
+      .for("update");
+
     const [existing] = await tx
       .select()
       .from(addresses)
@@ -195,11 +205,27 @@ export async function updateCustomerAddress(
       throw new AppError("Delivery address not found.", 404, "ADDRESS_NOT_FOUND");
     }
 
-    if (input.isDefault === true) {
+    const otherAddresses = await tx
+      .select({ id: addresses.id, isDefault: addresses.isDefault })
+      .from(addresses)
+      .where(and(eq(addresses.userId, userId), ne(addresses.id, addressId)))
+      .orderBy(desc(addresses.createdAt));
+    const otherHasDefault = otherAddresses.some((address) => address.isDefault);
+    const nextDefault =
+      input.isDefault === false && existing.isDefault && otherAddresses.length > 0
+        ? otherAddresses.find((address) => address.isDefault) || otherAddresses[0]
+        : null;
+    const shouldBeDefault =
+      input.isDefault === true ||
+      otherAddresses.length === 0 ||
+      (input.isDefault === undefined && existing.isDefault) ||
+      (!existing.isDefault && !otherHasDefault);
+
+    if (shouldBeDefault || nextDefault) {
       await tx
         .update(addresses)
         .set({ isDefault: false })
-        .where(and(eq(addresses.userId, userId), ne(addresses.id, addressId)));
+        .where(eq(addresses.userId, userId));
     }
 
     const [row] = await tx
@@ -220,10 +246,22 @@ export async function updateCustomerAddress(
         ...(input.additionalInformation !== undefined
           ? { additionalInformation: input.additionalInformation }
           : {}),
-        ...(input.isDefault !== undefined ? { isDefault: input.isDefault } : {}),
+        isDefault: shouldBeDefault,
       })
       .where(and(eq(addresses.id, addressId), eq(addresses.userId, userId)))
       .returning();
+
+    if (nextDefault) {
+      await tx
+        .update(addresses)
+        .set({ isDefault: true })
+        .where(
+          and(
+            eq(addresses.id, nextDefault.id),
+            eq(addresses.userId, userId)
+          )
+        );
+    }
 
     return row;
   });
@@ -236,6 +274,12 @@ export async function deleteCustomerAddress(
   addressId: string
 ): Promise<void> {
   await db.transaction(async (tx) => {
+    await tx
+      .select({ id: users.id })
+      .from(users)
+      .where(eq(users.id, userId))
+      .for("update");
+
     const [existing] = await tx
       .select()
       .from(addresses)
@@ -250,20 +294,29 @@ export async function deleteCustomerAddress(
       .delete(addresses)
       .where(and(eq(addresses.id, addressId), eq(addresses.userId, userId)));
 
-    if (existing.isDefault) {
-      const [nextAddress] = await tx
-        .select({ id: addresses.id })
-        .from(addresses)
-        .where(eq(addresses.userId, userId))
-        .orderBy(desc(addresses.createdAt))
-        .limit(1);
+    const remainingAddresses = await tx
+      .select({ id: addresses.id, isDefault: addresses.isDefault })
+      .from(addresses)
+      .where(eq(addresses.userId, userId))
+      .orderBy(desc(addresses.createdAt));
+    const nextDefault =
+      remainingAddresses.find((address) => address.isDefault) ||
+      remainingAddresses[0];
 
-      if (nextAddress) {
-        await tx
-          .update(addresses)
-          .set({ isDefault: true })
-          .where(eq(addresses.id, nextAddress.id));
-      }
+    if (nextDefault) {
+      await tx
+        .update(addresses)
+        .set({ isDefault: false })
+        .where(eq(addresses.userId, userId));
+      await tx
+        .update(addresses)
+        .set({ isDefault: true })
+        .where(
+          and(
+            eq(addresses.id, nextDefault.id),
+            eq(addresses.userId, userId)
+          )
+        );
     }
   });
 }

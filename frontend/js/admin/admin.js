@@ -6,12 +6,11 @@
 
 import { api } from "../api.js";
 import {
-  buildAuthRedirectUrl,
   fetchCurrentUser,
   logoutUser,
 } from "../services/auth-service.js";
 
-const ADMIN_REDIRECT_TARGET = "/admin/index.html";
+const ADMIN_AUTH_REDIRECT = "/pages/auth.html?redirect=%2Fadmin%2Findex.html";
 
 export async function verifyAdminAccess() {
   let sessionUser = null;
@@ -19,14 +18,14 @@ export async function verifyAdminAccess() {
     sessionUser = await fetchCurrentUser({ force: true });
   } catch (err) {
     if (err && err.status === 401) {
-      window.location.replace(buildAuthRedirectUrl(ADMIN_REDIRECT_TARGET));
+      window.location.replace(ADMIN_AUTH_REDIRECT);
       return { status: "unauthenticated", admin: null };
     }
     throw err;
   }
 
   if (!sessionUser) {
-    window.location.replace(buildAuthRedirectUrl(ADMIN_REDIRECT_TARGET));
+    window.location.replace(ADMIN_AUTH_REDIRECT);
     return { status: "unauthenticated", admin: null };
   }
 
@@ -38,7 +37,7 @@ export async function verifyAdminAccess() {
     };
   } catch (err) {
     if (err && err.status === 401) {
-      window.location.replace(buildAuthRedirectUrl(ADMIN_REDIRECT_TARGET));
+      window.location.replace(ADMIN_AUTH_REDIRECT);
       return { status: "unauthenticated", admin: null };
     }
     if (err && err.status === 403) {
@@ -70,7 +69,7 @@ export async function fetchAdminDashboardSales(params = {}) {
 
 export async function signOutAdmin() {
   await logoutUser();
-  window.location.replace(buildAuthRedirectUrl(ADMIN_REDIRECT_TARGET));
+  window.location.replace("/pages/auth.html");
 }
 
 // ============================================================================
@@ -96,7 +95,10 @@ export async function fetchAdminProductDetail(productId) {
 
 export async function createAdminProductRequest(payload) {
   const res = await api.post("/admin/products", payload);
-  return res?.product || null;
+  if (!res?.product?.id) {
+    throw new Error("The server did not return the created product.");
+  }
+  return res.product;
 }
 
 export async function updateAdminProductRequest(productId, payload) {
@@ -138,10 +140,34 @@ export async function deleteAdminVariantRequest(productId, variantId) {
 // Admin Product Images API
 // ============================================================================
 
-export async function addAdminProductImageRequest(productId, payload) {
+export async function stageAdminProductImageRequest(file) {
+  const res = await api.request("/admin/products/images/staged", {
+    method: "POST",
+    body: file,
+    headers: { "Content-Type": file.type },
+  });
+  if (!res?.uploadId) {
+    throw new Error("The server did not return the staged image reference.");
+  }
+  return res.uploadId;
+}
+
+export async function discardStagedAdminProductImageRequest(uploadId) {
+  return api.delete(`/admin/products/images/staged/${encodeURIComponent(uploadId)}`);
+}
+
+export async function addAdminProductImageRequest(productId, uploadId) {
   const res = await api.post(
     `/admin/products/${encodeURIComponent(productId)}/images`,
-    payload
+    { uploadId }
+  );
+  return res?.image || null;
+}
+
+export async function replaceAdminProductImageRequest(productId, imageId, uploadId) {
+  const res = await api.put(
+    `/admin/products/${encodeURIComponent(productId)}/images/${encodeURIComponent(imageId)}`,
+    { uploadId }
   );
   return res?.image || null;
 }
@@ -468,4 +494,21 @@ export async function updateAdminAvailabilityRequest(payload) {
 export async function updateAdminHomepageRequest(payload) {
   const res = await api.patch("/admin/settings/homepage", payload);
   return res?.homepage || null;
+}
+
+export async function createAdminBannerRequest(payload) {
+  const res = await api.post("/admin/banners", payload);
+  return res?.banner || null;
+}
+
+export async function updateAdminBannerRequest(bannerId, payload) {
+  const res = await api.patch(
+    `/admin/banners/${encodeURIComponent(bannerId)}`,
+    payload
+  );
+  return res?.banner || null;
+}
+
+export async function deleteAdminBannerRequest(bannerId) {
+  return api.delete(`/admin/banners/${encodeURIComponent(bannerId)}`);
 }

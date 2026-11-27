@@ -11,24 +11,34 @@ import {
   openModal,
   showToast,
 } from "../components/ui.js";
-import { escapeHtml, formatPriceEGP } from "../utils/formatters.js";
+import {
+  COLOR_OPTIONS,
+  escapeHtml,
+  formatPriceEGP,
+} from "../utils/formatters.js";
 import {
   addAdminProductImageRequest,
   createAdminProductRequest,
   createAdminVariantRequest,
+  discardStagedAdminProductImageRequest,
   deleteAdminProductImageRequest,
   deleteAdminProductRequest,
   deleteAdminVariantRequest,
   fetchAdminCategories,
   fetchAdminProductDetail,
   fetchAdminProducts,
+  replaceAdminProductImageRequest,
   reorderAdminProductImagesRequest,
+  stageAdminProductImageRequest,
   updateAdminProductImageRequest,
   updateAdminProductRequest,
   updateAdminVariantRequest,
 } from "./admin.js";
 
-const SKU_REGEX = /^[A-Za-z0-9][A-Za-z0-9_-]{1,99}$/;
+const MAX_PRODUCT_IMAGE_BYTES = 5 * 1024 * 1024;
+const PRODUCT_IMAGE_TYPES = new Set(["image/jpeg", "image/png", "image/webp"]);
+const VARIANT_SIZE_OPTIONS = ["XXS", "XS", "S", "M", "L", "XL", "XXL", "XXXL", "One Size"];
+const previewObjectUrls = new WeakMap();
 
 const prodState = {
   loading: false,
@@ -60,53 +70,30 @@ function formatTemplate(template, vars) {
   );
 }
 
-function isValidImageUrlInput(raw) {
-  const trimmed = String(raw || "").trim();
-  if (!trimmed || /\s/.test(trimmed)) return false;
-  if (trimmed.startsWith("/")) {
-    return /^\/[A-Za-z0-9/_\-.~%?&=+#]+$/.test(trimmed) && !trimmed.startsWith("//");
+function validateProductImageFiles(files, requireOne = true) {
+  if (requireOne && files.length === 0) return "adminCatalog.images.imageRequired";
+  if (files.some((file) => !PRODUCT_IMAGE_TYPES.has(file.type))) {
+    return "adminCatalog.images.fileTypes";
   }
-  try {
-    const parsed = new URL(trimmed);
-    return parsed.protocol === "https:" || parsed.protocol === "http:";
-  } catch {
-    return false;
+  if (files.some((file) => file.size === 0 || file.size > MAX_PRODUCT_IMAGE_BYTES)) {
+    return "adminCatalog.images.fileTooLarge";
   }
+  if (files.length > 10) return "adminCatalog.images.tooManyFiles";
+  return "";
 }
 
-function bindLivePreview(inputEl, previewWrapEl, lang, required = true) {
-  if (!inputEl || !previewWrapEl) return;
-
-  const update = () => {
-    const val = inputEl.value.trim();
-    if (!val) {
-      previewWrapEl.innerHTML = `<span>${escapeHtml(
-        required ? t("adminCatalog.noImage", lang) : t("adminCatalog.noImage", lang)
-      )}</span>`;
-      return;
-    }
-    if (!isValidImageUrlInput(val)) {
-      previewWrapEl.innerHTML = `<span style="color: var(--color-danger);">${escapeHtml(
-        t("adminCatalog.imageBroken", lang)
-      )}</span>`;
-      return;
-    }
-
-    const img = document.createElement("img");
-    img.src = val;
-    img.alt = "";
-    img.referrerPolicy = "no-referrer";
-    img.addEventListener("error", () => {
-      previewWrapEl.innerHTML = `<span style="color: var(--color-danger);">${escapeHtml(
-        t("adminCatalog.imageBroken", lang)
-      )}</span>`;
-    });
-    previewWrapEl.innerHTML = "";
-    previewWrapEl.appendChild(img);
-  };
-
-  inputEl.addEventListener("input", update);
-  update();
+function renderProductImagePreviews(input, previewWrap) {
+  for (const url of previewObjectUrls.get(input) || []) URL.revokeObjectURL(url);
+  const files = Array.from(input.files || []);
+  const urls = files.map((file) => URL.createObjectURL(file));
+  previewObjectUrls.set(input, urls);
+  previewWrap.replaceChildren();
+  for (const [index, url] of urls.entries()) {
+    const image = document.createElement("img");
+    image.src = url;
+    image.alt = files[index].name;
+    previewWrap.appendChild(image);
+  }
 }
 
 export async function loadAdminProductsList({ onAuthError, onRender } = {}) {
@@ -175,8 +162,9 @@ export async function loadAdminProductDetail(productId, { onAuthError, onRender 
   }
 }
 
-function buildCategoryOptionsHtml(categoriesList, selectedId, lang) {
+function buildCategoryOptionsHtml(categoriesList, selectedId, lang, activeOnly = false) {
   return categoriesList
+    .filter((category) => !activeOnly || category.isActive || category.id === selectedId)
     .map((c) => {
       const label = lang === "ar" ? c.name_ar || c.name_en : c.name_en || c.name_ar;
       const inactiveNote = c.isActive ? "" : ` (${t("adminCatalog.inactive", lang)})`;
@@ -200,7 +188,7 @@ function openCreateProductModal({ onCreated, onAuthError }) {
           <label class="field__label" for="cp-category">${escapeHtml(t("adminCatalog.products.categoryLabel", lang))} *</label>
           <select id="cp-category" class="input" required>
             <option value="">${escapeHtml(t("adminCatalog.products.selectCategory", lang))}</option>
-            ${buildCategoryOptionsHtml(prodState.categories, "", lang)}
+            ${buildCategoryOptionsHtml(prodState.categories, "", lang, true)}
           </select>
         </div>
 
@@ -223,6 +211,7 @@ function openCreateProductModal({ onCreated, onAuthError }) {
         <div class="field">
           <label class="field__label" for="cp-base-price">${escapeHtml(t("adminCatalog.products.basePrice", lang))} *</label>
           <input id="cp-base-price" class="input" type="number" min="0" step="0.01" required />
+          <span class="field__hint">${escapeHtml(t("adminCatalog.products.basePriceHint", lang))}</span>
         </div>
 
         <div class="field">
@@ -240,22 +229,24 @@ function openCreateProductModal({ onCreated, onAuthError }) {
           <textarea id="cp-desc-ar" class="input admin-textarea" maxlength="5000" dir="rtl"></textarea>
         </div>
 
+        <div class="field admin-form-full">
+          <label class="field__label" for="cp-images">${escapeHtml(t("adminCatalog.images.uploadLabel", lang))} *</label>
+          <input id="cp-images" class="input" type="file" accept="image/jpeg,image/png,image/webp" multiple />
+          <span class="field__hint">${escapeHtml(t("adminCatalog.images.uploadHint", lang))}</span>
+          <div class="admin-upload-preview" id="cp-image-preview" aria-live="polite"></div>
+        </div>
+
+        <div class="field admin-form-full">
+          <label class="field__label" for="cp-image-urls">${escapeHtml(t("adminCatalog.images.urlLabel", lang))}</label>
+          <textarea id="cp-image-urls" class="input admin-textarea" dir="ltr" maxlength="21000" placeholder="https://example.com/image-1.jpg&#10;https://example.com/image-2.jpg"></textarea>
+          <span class="field__hint">${escapeHtml(t("adminCatalog.images.urlHint", lang))}</span>
+          <div class="admin-upload-preview" id="cp-image-url-preview" aria-live="polite"></div>
+        </div>
+
         <div class="admin-checkbox-grid admin-form-full">
-          <label class="admin-checkbox">
-            <input id="cp-published" type="checkbox" />
-            <span>${escapeHtml(t("adminCatalog.products.publishImmediately", lang))}</span>
-          </label>
           <label class="admin-checkbox">
             <input id="cp-featured" type="checkbox" />
             <span>${escapeHtml(t("adminCatalog.products.flagFeatured", lang))}</span>
-          </label>
-          <label class="admin-checkbox">
-            <input id="cp-new" type="checkbox" checked />
-            <span>${escapeHtml(t("adminCatalog.products.flagNew", lang))}</span>
-          </label>
-          <label class="admin-checkbox">
-            <input id="cp-bestseller" type="checkbox" />
-            <span>${escapeHtml(t("adminCatalog.products.flagBestSeller", lang))}</span>
           </label>
         </div>
       </div>
@@ -276,11 +267,44 @@ function openCreateProductModal({ onCreated, onAuthError }) {
   const form = document.getElementById("admin-create-product-form");
   const errBox = document.getElementById("admin-prod-create-err");
   const submitBtn = document.getElementById("cp-submit-btn");
+  const imageInput = document.getElementById("cp-images");
+  const imagePreview = document.getElementById("cp-image-preview");
+  const imageUrlInput = document.getElementById("cp-image-urls");
+  const imageUrlPreview = document.getElementById("cp-image-url-preview");
+  let isSubmitting = false;
 
   document.getElementById("cp-cancel-btn")?.addEventListener("click", closeModal);
+  imageInput?.addEventListener("change", () => {
+    const files = Array.from(imageInput.files || []);
+    const validationKey = validateProductImageFiles(files);
+    errBox.hidden = !validationKey;
+    if (validationKey) errBox.textContent = t(validationKey, getLanguage());
+    renderProductImagePreviews(imageInput, imagePreview);
+  });
+
+  imageUrlInput?.addEventListener("input", () => {
+    const urls = imageUrlInput.value
+      .split(/\r?\n/)
+      .map((value) => value.trim())
+      .filter(Boolean);
+    imageUrlPreview.replaceChildren();
+    urls.slice(0, 10).forEach((url) => {
+      try {
+        const parsed = new URL(url);
+        if (!["http:", "https:"].includes(parsed.protocol)) return;
+        const image = document.createElement("img");
+        image.src = parsed.href;
+        image.alt = "";
+        imageUrlPreview.appendChild(image);
+      } catch {
+        return;
+      }
+    });
+  });
 
   form?.addEventListener("submit", async (e) => {
     e.preventDefault();
+    if (isSubmitting) return;
     const curLang = getLanguage();
     errBox.hidden = true;
 
@@ -292,10 +316,12 @@ function openCreateProductModal({ onCreated, onAuthError }) {
     const compareRaw = document.getElementById("cp-compare-price").value;
     const descriptionEn = document.getElementById("cp-desc-en").value.trim();
     const descriptionAr = document.getElementById("cp-desc-ar").value.trim();
-    const isPublished = document.getElementById("cp-published").checked;
     const isFeatured = document.getElementById("cp-featured").checked;
-    const isNew = document.getElementById("cp-new").checked;
-    const isBestSeller = document.getElementById("cp-bestseller").checked;
+    const imageFiles = Array.from(imageInput.files || []);
+    const imageUrls = (imageUrlInput.value || "")
+      .split(/\r?\n/)
+      .map((value) => value.trim())
+      .filter(Boolean);
 
     const basePrice = Number(basePriceRaw);
     const compareAtPrice = compareRaw.trim() !== "" ? Number(compareRaw) : null;
@@ -325,11 +351,48 @@ function openCreateProductModal({ onCreated, onAuthError }) {
       errBox.hidden = false;
       return;
     }
+    if (imageFiles.length > 0 && imageUrls.length > 0) {
+      errBox.textContent = t("adminCatalog.images.sourceConflict", curLang);
+      errBox.hidden = false;
+      return;
+    }
+    if (imageUrls.length === 0) {
+      const imageValidationKey = validateProductImageFiles(imageFiles);
+      if (imageValidationKey) {
+        errBox.textContent = t(imageValidationKey, curLang);
+        errBox.hidden = false;
+        return;
+      }
+    } else {
+      if (imageUrls.length > 10) {
+        errBox.textContent = t("adminCatalog.images.tooManyFiles", curLang);
+        errBox.hidden = false;
+        return;
+      }
+      const invalidUrl = imageUrls.find((url) => {
+        try {
+          const parsed = new URL(url);
+          return !["http:", "https:"].includes(parsed.protocol);
+        } catch {
+          return true;
+        }
+      });
+      if (invalidUrl) {
+        errBox.textContent = t("adminCatalog.images.invalidUrl", curLang);
+        errBox.hidden = false;
+        return;
+      }
+    }
 
+    isSubmitting = true;
     submitBtn.disabled = true;
     submitBtn.textContent = t("adminCatalog.saving", curLang);
 
+    const stagedUploadIds = [];
     try {
+      for (const file of imageFiles) {
+        stagedUploadIds.push(await stageAdminProductImageRequest(file));
+      }
       const created = await createAdminProductRequest({
         categoryId,
         nameEn,
@@ -339,15 +402,28 @@ function openCreateProductModal({ onCreated, onAuthError }) {
         compareAtPrice,
         descriptionEn: descriptionEn || null,
         descriptionAr: descriptionAr || null,
-        isPublished,
+        ...(stagedUploadIds.length ? { imageUploadIds: stagedUploadIds } : {}),
+        ...(imageUrls.length ? { imageUrls } : {}),
         isFeatured,
-        isNew,
-        isBestSeller,
       });
+      if (!created?.id) {
+        throw new Error(t("adminCatalog.errorTitle", curLang));
+      }
+      stagedUploadIds.length = 0;
       closeModal();
       showToast(t("adminCatalog.products.createdToast", getLanguage()), "success");
       await onCreated(created);
     } catch (err) {
+      const cleanupResults = await Promise.allSettled(
+        stagedUploadIds.map((uploadId) =>
+          discardStagedAdminProductImageRequest(uploadId)
+        )
+      );
+      for (const result of cleanupResults) {
+        if (result.status === "rejected") {
+          console.error("Could not remove a staged product image after creation failed.", result.reason);
+        }
+      }
       if (err && (err.status === 401 || err.status === 403)) {
         closeModal();
         await onAuthError(err);
@@ -355,6 +431,7 @@ function openCreateProductModal({ onCreated, onAuthError }) {
       }
       errBox.textContent = err?.message || t("adminCatalog.errorTitle", getLanguage());
       errBox.hidden = false;
+      isSubmitting = false;
       submitBtn.disabled = false;
       submitBtn.textContent = t("adminCatalog.create", getLanguage());
     }
@@ -364,6 +441,42 @@ function openCreateProductModal({ onCreated, onAuthError }) {
 function openVariantModal({ product, existing = null, onSaved, onAuthError }) {
   const lang = getLanguage();
   const isEdit = Boolean(existing);
+  const selectedSize =
+    VARIANT_SIZE_OPTIONS.find(
+      (size) => size.toLowerCase() === String(existing?.size || "").toLowerCase()
+    ) || existing?.size;
+  const selectedColor =
+    COLOR_OPTIONS.find(
+      ({ value }) => value.toLowerCase() === String(existing?.color || "").toLowerCase()
+    )?.value || existing?.color;
+  const sizeOptions = VARIANT_SIZE_OPTIONS.map(
+    (size) =>
+      `<option value="${escapeHtml(size)}" ${
+        size === selectedSize ? "selected" : ""
+      }>${escapeHtml(size)}</option>`
+  );
+  const colorOptions = COLOR_OPTIONS.map(({ value, name_ar }) => {
+    const label = lang === "ar" ? name_ar : value;
+    return `<option value="${escapeHtml(value)}" ${
+      value === selectedColor ? "selected" : ""
+    }>${escapeHtml(label)}</option>`;
+  });
+  const isKnownSize = VARIANT_SIZE_OPTIONS.some(
+    (size) => size.toLowerCase() === existing?.size?.toLowerCase()
+  );
+  const isKnownColor = COLOR_OPTIONS.some(
+    ({ value }) => value.toLowerCase() === existing?.color?.toLowerCase()
+  );
+  if (existing?.size && !isKnownSize) {
+    sizeOptions.push(
+      `<option value="${escapeHtml(existing.size)}" selected>${escapeHtml(existing.size)}</option>`
+    );
+  }
+  if (existing?.color && !isKnownColor) {
+    colorOptions.push(
+      `<option value="${escapeHtml(existing.color)}" selected>${escapeHtml(existing.color)}</option>`
+    );
+  }
 
   const wrap = document.createElement("div");
   wrap.innerHTML = `
@@ -373,24 +486,27 @@ function openVariantModal({ product, existing = null, onSaved, onAuthError }) {
       <div class="admin-notice">${escapeHtml(t("adminCatalog.variants.stockNotice", lang))}</div>
 
       <div class="admin-form-grid">
-        <div class="field admin-form-full">
-          <label class="field__label" for="var-sku">${escapeHtml(t("adminCatalog.variants.sku", lang))} *</label>
-          <input id="var-sku" class="input" type="text" maxlength="100" dir="ltr" required placeholder="${escapeHtml(t("adminCatalog.variants.skuPlaceholder", lang))}" value="${escapeHtml(existing?.sku || "")}" />
-        </div>
-
         <div class="field">
           <label class="field__label" for="var-size">${escapeHtml(t("adminCatalog.variants.size", lang))} *</label>
-          <input id="var-size" class="input" type="text" maxlength="40" required placeholder="${escapeHtml(t("adminCatalog.variants.sizePlaceholder", lang))}" value="${escapeHtml(existing?.size || "")}" />
+          <select id="var-size" class="input" required>
+            <option value="">${escapeHtml(t("adminCatalog.variants.sizePlaceholder", lang))}</option>
+            ${sizeOptions.join("")}
+          </select>
+          <span class="field__hint">${escapeHtml(t("adminCatalog.variants.sizeHint", lang))}</span>
         </div>
 
         <div class="field">
           <label class="field__label" for="var-color">${escapeHtml(t("adminCatalog.variants.color", lang))} *</label>
-          <input id="var-color" class="input" type="text" maxlength="60" required placeholder="${escapeHtml(t("adminCatalog.variants.colorPlaceholder", lang))}" value="${escapeHtml(existing?.color || "")}" />
+          <select id="var-color" class="input" required>
+            <option value="">${escapeHtml(t("adminCatalog.variants.colorPlaceholder", lang))}</option>
+            ${colorOptions.join("")}
+          </select>
+          <span class="field__hint">${escapeHtml(t("adminCatalog.variants.colorHint", lang))}</span>
         </div>
 
         <div class="field admin-form-full">
           <label class="field__label" for="var-price">${escapeHtml(t("adminCatalog.variants.price", lang))}</label>
-          <input id="var-price" class="input" type="number" min="0" step="0.01" value="${escapeHtml(String(existing ? existing.price : product.basePrice))}" />
+          <input id="var-price" class="input" type="number" min="0" step="0.01" placeholder="${escapeHtml(String(product.basePrice))}" value="${escapeHtml(existing ? String(existing.price) : "")}" />
           <span class="field__hint">${escapeHtml(t("adminCatalog.variants.priceHint", lang))}</span>
         </div>
 
@@ -429,17 +545,11 @@ function openVariantModal({ product, existing = null, onSaved, onAuthError }) {
     const curLang = getLanguage();
     errBox.hidden = true;
 
-    const sku = document.getElementById("var-sku").value.trim().toUpperCase();
     const size = document.getElementById("var-size").value.trim();
     const color = document.getElementById("var-color").value.trim();
     const priceRaw = document.getElementById("var-price").value.trim();
     const isActive = document.getElementById("var-active").checked;
 
-    if (!SKU_REGEX.test(sku)) {
-      errBox.textContent = t("adminCatalog.variants.errSku", curLang);
-      errBox.hidden = false;
-      return;
-    }
     if (!size) {
       errBox.textContent = t("adminCatalog.variants.errSize", curLang);
       errBox.hidden = false;
@@ -466,7 +576,6 @@ function openVariantModal({ product, existing = null, onSaved, onAuthError }) {
 
     try {
       const payload = {
-        sku,
         size,
         color,
         ...(price !== undefined ? { price } : {}),
@@ -509,33 +618,28 @@ function openProductImageModal({ productId, existing = null, onSaved, onAuthErro
       <div class="admin-notice">${escapeHtml(t("adminCatalog.images.uploadNotice", lang))}</div>
 
       <div class="field">
-        <label class="field__label" for="pimg-url">${escapeHtml(t("adminCatalog.images.urlLabel", lang))} *</label>
-        <input id="pimg-url" class="input" type="text" maxlength="2000" dir="ltr" required placeholder="${escapeHtml(t("adminCatalog.images.urlPlaceholder", lang))}" value="${escapeHtml(existing?.imageUrl || "")}" />
+        <label class="field__label" for="pimg-file">${escapeHtml(t("adminCatalog.images.uploadLabel", lang))} *</label>
+        <input id="pimg-file" class="input" type="file" accept="image/jpeg,image/png,image/webp" required />
+        <span class="field__hint">${escapeHtml(t("adminCatalog.images.uploadHint", lang))}</span>
       </div>
 
       <div class="admin-preview-box">
-        <div class="admin-preview-box__frame" id="pimg-preview"></div>
+        <div class="admin-preview-box__frame" id="pimg-preview">
+          ${
+            existing
+              ? `<img src="${escapeHtml(existing.imageUrl)}" alt="" />`
+              : `<span>${escapeHtml(t("adminCatalog.noImage", lang))}</span>`
+          }
+        </div>
         <div class="admin-preview-box__meta">
           <strong>${escapeHtml(t("adminCatalog.previewLabel", lang))}</strong>
         </div>
       </div>
 
-      <div class="field">
-        <label class="field__label" for="pimg-alt">${escapeHtml(t("adminCatalog.images.altLabel", lang))}</label>
-        <input id="pimg-alt" class="input" type="text" maxlength="255" placeholder="${escapeHtml(t("adminCatalog.images.altPlaceholder", lang))}" value="${escapeHtml(existing?.altText || "")}" />
-      </div>
-
-      <div class="admin-checkbox-grid">
-        <label class="admin-checkbox">
-          <input id="pimg-primary" type="checkbox" ${existing?.isPrimary ? "checked" : ""} />
-          <span>${escapeHtml(t("adminCatalog.images.setPrimary", lang))}</span>
-        </label>
-      </div>
-
       <div class="modal-footer" style="margin-top: 0;">
         <button type="button" class="btn btn--secondary" id="pimg-cancel-btn">${escapeHtml(t("adminCatalog.cancel", lang))}</button>
         <button type="submit" class="btn btn--primary" id="pimg-submit-btn">
-          ${escapeHtml(isEdit ? t("adminCatalog.save", lang) : t("adminCatalog.create", lang))}
+          ${escapeHtml(isEdit ? t("adminCatalog.save", lang) : t("adminCatalog.images.addBtn", lang))}
         </button>
       </div>
     </form>
@@ -551,10 +655,16 @@ function openProductImageModal({ productId, existing = null, onSaved, onAuthErro
   const form = document.getElementById("admin-prod-image-form");
   const errBox = document.getElementById("admin-img-err");
   const submitBtn = document.getElementById("pimg-submit-btn");
-  const urlInput = document.getElementById("pimg-url");
+  const fileInput = document.getElementById("pimg-file");
   const previewWrap = document.getElementById("pimg-preview");
 
-  bindLivePreview(urlInput, previewWrap, lang, true);
+  fileInput?.addEventListener("change", () => {
+    const files = Array.from(fileInput.files || []);
+    const validationKey = validateProductImageFiles(files);
+    errBox.hidden = !validationKey;
+    if (validationKey) errBox.textContent = t(validationKey, getLanguage());
+    renderProductImagePreviews(fileInput, previewWrap);
+  });
   document.getElementById("pimg-cancel-btn")?.addEventListener("click", closeModal);
 
   form?.addEventListener("submit", async (e) => {
@@ -562,12 +672,10 @@ function openProductImageModal({ productId, existing = null, onSaved, onAuthErro
     const curLang = getLanguage();
     errBox.hidden = true;
 
-    const imageUrl = urlInput.value.trim();
-    const altText = document.getElementById("pimg-alt").value.trim();
-    const isPrimary = document.getElementById("pimg-primary").checked;
-
-    if (!isValidImageUrlInput(imageUrl)) {
-      errBox.textContent = t("adminCatalog.images.errUrl", curLang);
+    const files = Array.from(fileInput.files || []);
+    const validationKey = validateProductImageFiles(files);
+    if (validationKey) {
+      errBox.textContent = t(validationKey, curLang);
       errBox.hidden = false;
       return;
     }
@@ -575,23 +683,25 @@ function openProductImageModal({ productId, existing = null, onSaved, onAuthErro
     submitBtn.disabled = true;
     submitBtn.textContent = t("adminCatalog.saving", curLang);
 
+    let stagedUploadId;
     try {
-      const payload = {
-        imageUrl,
-        altText: altText || null,
-        ...(isEdit ? (isPrimary ? { isPrimary: true } : {}) : { isPrimary }),
-      };
-
+      stagedUploadId = await stageAdminProductImageRequest(files[0]);
       if (isEdit) {
-        await updateAdminProductImageRequest(productId, existing.id, payload);
+        await replaceAdminProductImageRequest(productId, existing.id, stagedUploadId);
         showToast(t("adminCatalog.images.updatedToast", curLang), "success");
       } else {
-        await addAdminProductImageRequest(productId, payload);
+        await addAdminProductImageRequest(productId, stagedUploadId);
         showToast(t("adminCatalog.images.addedToast", curLang), "success");
       }
+      stagedUploadId = null;
       closeModal();
       await onSaved();
     } catch (err) {
+      if (stagedUploadId) {
+        await discardStagedAdminProductImageRequest(stagedUploadId).catch((cleanupError) => {
+          console.error("Could not remove the staged product image after saving failed.", cleanupError);
+        });
+      }
       if (err && (err.status === 401 || err.status === 403)) {
         closeModal();
         await onAuthError(err);
@@ -602,7 +712,7 @@ function openProductImageModal({ productId, existing = null, onSaved, onAuthErro
       submitBtn.disabled = false;
       submitBtn.textContent = isEdit
         ? t("adminCatalog.save", curLang)
-        : t("adminCatalog.create", curLang);
+        : t("adminCatalog.images.addBtn", curLang);
     }
   });
 }
@@ -701,6 +811,21 @@ function renderProductDetailEditor(mainEl, { onAuthError, onRender }) {
   const product = prodState.detail;
   const displayName =
     lang === "ar" ? product.name_ar || product.name_en : product.name_en || product.name_ar;
+  const publicationReadiness = product.publicationReadiness || {
+    canPublish: false,
+    blockers: ["no_active_variant"],
+  };
+  const readinessMessages = {
+    inactive_category: "adminCatalog.products.readinessInactiveCategory",
+    no_product_image: "adminCatalog.products.readinessNoImage",
+    no_active_variant: "adminCatalog.products.readinessNoVariant",
+    no_available_stock: "adminCatalog.products.readinessNoStock",
+  };
+  const readinessText = publicationReadiness.canPublish
+    ? t("adminCatalog.products.readinessReady", lang)
+    : publicationReadiness.blockers
+        .map((blocker) => t(readinessMessages[blocker], lang))
+        .join(" ");
 
   const reloadDetailAndList = async () => {
     await Promise.all([
@@ -726,7 +851,7 @@ function renderProductDetailEditor(mainEl, { onAuthError, onRender }) {
         <button type="button" class="btn btn--secondary btn--sm" id="prod-back-btn">
           ${escapeHtml(t("adminCatalog.backToList", lang))}
         </button>
-        <button type="button" class="btn btn--secondary btn--sm" id="prod-toggle-publish">
+        <button type="button" class="btn btn--secondary btn--sm" id="prod-toggle-publish" ${!product.isPublished && !publicationReadiness.canPublish ? "disabled" : ""}>
           ${escapeHtml(
             product.isPublished
               ? t("adminCatalog.products.unpublishBtn", lang)
@@ -737,6 +862,11 @@ function renderProductDetailEditor(mainEl, { onAuthError, onRender }) {
           ${escapeHtml(t("adminCatalog.products.deleteBtn", lang))}
         </button>
       </div>
+    </div>
+
+    <div class="admin-notice ${publicationReadiness.canPublish ? "" : "admin-notice--warn"}" role="status">
+      <strong>${escapeHtml(t("adminCatalog.products.readinessTitle", lang))}</strong>
+      <div>${escapeHtml(readinessText)}</div>
     </div>
 
     ${
@@ -759,7 +889,7 @@ function renderProductDetailEditor(mainEl, { onAuthError, onRender }) {
             <div class="field">
               <label class="field__label" for="ep-category">${escapeHtml(t("adminCatalog.products.categoryLabel", lang))} *</label>
               <select id="ep-category" class="input" required>
-                ${buildCategoryOptionsHtml(prodState.categories, product.category.id, lang)}
+                ${buildCategoryOptionsHtml(prodState.categories, product.category.id, lang, true)}
               </select>
             </div>
 
@@ -781,6 +911,7 @@ function renderProductDetailEditor(mainEl, { onAuthError, onRender }) {
             <div class="field">
               <label class="field__label" for="ep-base-price">${escapeHtml(t("adminCatalog.products.basePrice", lang))} *</label>
               <input id="ep-base-price" class="input" type="number" min="0" step="0.01" required value="${escapeHtml(String(product.basePrice))}" />
+              <span class="field__hint">${escapeHtml(t("adminCatalog.products.basePriceHint", lang))}</span>
             </div>
 
             <div class="field">
@@ -806,14 +937,6 @@ function renderProductDetailEditor(mainEl, { onAuthError, onRender }) {
               <label class="admin-checkbox">
                 <input id="ep-featured" type="checkbox" ${product.isFeatured ? "checked" : ""} />
                 <span>${escapeHtml(t("adminCatalog.products.flagFeatured", lang))}</span>
-              </label>
-              <label class="admin-checkbox">
-                <input id="ep-new" type="checkbox" ${product.isNew ? "checked" : ""} />
-                <span>${escapeHtml(t("adminCatalog.products.flagNew", lang))}</span>
-              </label>
-              <label class="admin-checkbox">
-                <input id="ep-bestseller" type="checkbox" ${product.isBestSeller ? "checked" : ""} />
-                <span>${escapeHtml(t("adminCatalog.products.flagBestSeller", lang))}</span>
               </label>
             </div>
           </div>
@@ -853,7 +976,6 @@ function renderProductDetailEditor(mainEl, { onAuthError, onRender }) {
             <table class="admin-table">
               <thead>
                 <tr>
-                  <th>${escapeHtml(t("adminCatalog.variants.colSku", lang))}</th>
                   <th>${escapeHtml(t("adminCatalog.variants.colSize", lang))}</th>
                   <th>${escapeHtml(t("adminCatalog.variants.colColor", lang))}</th>
                   <th class="admin-table__num">${escapeHtml(t("adminCatalog.variants.colPrice", lang))}</th>
@@ -867,7 +989,6 @@ function renderProductDetailEditor(mainEl, { onAuthError, onRender }) {
                   .map(
                     (v) => `
                   <tr>
-                    <td dir="ltr"><strong>${escapeHtml(v.sku)}</strong></td>
                     <td>${escapeHtml(v.size)}</td>
                     <td>${escapeHtml(v.color)}</td>
                     <td class="admin-table__num tabular-nums">${escapeHtml(formatPriceEGP(v.price, lang))}</td>
@@ -905,7 +1026,7 @@ function renderProductDetailEditor(mainEl, { onAuthError, onRender }) {
         }
       </section>
 
-      <!-- Product Images Gallery Panel (URL-based) -->
+      <!-- Product Images Gallery Panel -->
       <section class="admin-panel">
         <div class="admin-panel__head">
           <div>
@@ -949,7 +1070,6 @@ function renderProductDetailEditor(mainEl, { onAuthError, onRender }) {
                 </div>
                 <div class="admin-gallery-card__body">
                   <div class="admin-gallery-card__alt">${escapeHtml(img.altText || displayName)}</div>
-                  <div class="admin-gallery-card__url" dir="ltr" title="${escapeHtml(img.imageUrl)}">${escapeHtml(img.imageUrl)}</div>
                   <div class="admin-gallery-card__actions">
                     ${
                       !img.isPrimary
@@ -973,7 +1093,7 @@ function renderProductDetailEditor(mainEl, { onAuthError, onRender }) {
                         : ""
                     }
                     <button type="button" class="btn btn--secondary btn--sm" data-img-edit="${escapeHtml(img.id)}">
-                      ${escapeHtml(t("adminCatalog.edit", lang))}
+                      ${escapeHtml(t("adminCatalog.images.replaceBtn", lang))}
                     </button>
                     <button type="button" class="btn btn--ghost btn--sm" data-img-delete="${escapeHtml(img.id)}" style="color: var(--color-danger);">
                       ${escapeHtml(t("adminCatalog.delete", lang))}
@@ -1051,8 +1171,18 @@ function renderProductDetailEditor(mainEl, { onAuthError, onRender }) {
     const descriptionAr = document.getElementById("ep-desc-ar").value.trim();
     const isPublished = document.getElementById("ep-published").checked;
     const isFeatured = document.getElementById("ep-featured").checked;
-    const isNew = document.getElementById("ep-new").checked;
-    const isBestSeller = document.getElementById("ep-bestseller").checked;
+    const selectedCategoryIsActive = prodState.categories.some(
+      (category) => category.id === categoryId && category.isActive
+    );
+    const publicationBlockers = publicationReadiness.blockers.filter(
+      (blocker) => blocker !== "inactive_category"
+    );
+    if (!selectedCategoryIsActive) publicationBlockers.unshift("inactive_category");
+    const publicationError = publicationBlockers.length
+      ? publicationBlockers
+          .map((blocker) => t(readinessMessages[blocker], curLang))
+          .join(" ")
+      : t("adminCatalog.products.readinessReady", curLang);
 
     const basePrice = Number(basePriceRaw);
     const compareAtPrice = compareRaw.trim() !== "" ? Number(compareRaw) : null;
@@ -1082,6 +1212,11 @@ function renderProductDetailEditor(mainEl, { onAuthError, onRender }) {
       errBox.hidden = false;
       return;
     }
+    if (isPublished && publicationBlockers.length > 0) {
+      errBox.textContent = publicationError;
+      errBox.hidden = false;
+      return;
+    }
 
     saveBtn.disabled = true;
     saveBtn.textContent = t("adminCatalog.saving", curLang);
@@ -1098,8 +1233,6 @@ function renderProductDetailEditor(mainEl, { onAuthError, onRender }) {
         descriptionAr: descriptionAr || null,
         isPublished,
         isFeatured,
-        isNew,
-        isBestSeller,
       });
       showToast(t("adminCatalog.products.updatedToast", getLanguage()), "success");
       await reloadDetailAndList();
@@ -1148,9 +1281,7 @@ function renderProductDetailEditor(mainEl, { onAuthError, onRender }) {
 
       openConfirmDialog({
         title: t("adminCatalog.variants.deleteConfirmTitle", curLang),
-        message: formatTemplate(t("adminCatalog.variants.deleteConfirmMsg", curLang), {
-          sku: target.sku,
-        }),
+        message: t("adminCatalog.variants.deleteConfirmMsg", curLang),
         confirmLabel: t("adminCatalog.delete", curLang),
         cancelLabel: t("adminCatalog.cancel", curLang),
         onConfirm: async () => {
@@ -1301,7 +1432,7 @@ export function renderProductsSection(
     await loadAdminProductsList({ onAuthError, onRender });
   };
 
-  const hasCategories = prodState.categories.length > 0;
+  const hasCategories = prodState.categories.some((category) => category.isActive);
 
   mainEl.innerHTML = `
     <div class="admin-page-head">
@@ -1314,7 +1445,7 @@ export function renderProductsSection(
         <button type="button" class="btn btn--secondary btn--sm" id="admin-prod-refresh" ${prodState.loading ? "disabled" : ""}>
           ${escapeHtml(t("adminCatalog.refresh", lang))}
         </button>
-        <button type="button" class="btn btn--primary btn--sm" id="admin-prod-create" ${!hasCategories ? "disabled" : ""}>
+        <button type="button" class="btn btn--primary btn--sm" id="admin-prod-create" ${prodState.loading ? "disabled" : ""}>
           + ${escapeHtml(t("adminCatalog.products.addBtn", lang))}
         </button>
       </div>
@@ -1531,15 +1662,23 @@ export function renderProductsSection(
   document.getElementById("admin-prod-retry")?.addEventListener("click", refreshList);
 
   const triggerCreate = () => {
-    if (!hasCategories) return;
+    if (!hasCategories) {
+      if (typeof onNavigateSection === "function") onNavigateSection("categories");
+      return;
+    }
     openCreateProductModal({
       onAuthError,
-      onCreated: async (created) => {
+      onCreated: async () => {
+        prodState.selectedProductId = null;
+        prodState.detail = null;
+        prodState.filters = {
+          search: "",
+          categoryId: "",
+          published: "all",
+          sort: "newest",
+        };
+        prodState.pagination.page = 1;
         await loadAdminProductsList({ onAuthError });
-        if (created?.id) {
-          prodState.detail = created;
-          prodState.selectedProductId = created.id;
-        }
         onRender();
       },
     });

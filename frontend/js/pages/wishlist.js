@@ -209,7 +209,7 @@ function renderWishlistView() {
     addBtn.type = "button";
     addBtn.className = "btn btn--primary btn--sm";
     addBtn.disabled = isBusy || !canAddVariant;
-    addBtn.textContent = !item.inStock
+    addBtn.textContent = !canAddVariant
       ? t("wishlist.unavailableAction", lang)
       : isBusy
       ? t("wishlist.addingToBag", lang)
@@ -240,7 +240,12 @@ function renderWishlistView() {
           await loadWishlistPage();
           return;
         }
-        showToast(t("ui.actionFailed", getLanguage()), "error");
+        showToast(
+          err?.status === 403 && err?.code === "FORBIDDEN"
+            ? t("ui.customerOnlyAction", getLanguage())
+            : t("ui.actionFailed", getLanguage()),
+          "error"
+        );
       } finally {
         busyProductIds.delete(item.productId);
         renderWishlistView();
@@ -267,7 +272,12 @@ function renderWishlistView() {
           redirectToAuth("/pages/wishlist.html");
           return;
         }
-        showToast(t("ui.actionFailed", getLanguage()), "error");
+        showToast(
+          err?.status === 403 && err?.code === "FORBIDDEN"
+            ? t("ui.customerOnlyAction", getLanguage())
+            : t("ui.actionFailed", getLanguage()),
+          "error"
+        );
       } finally {
         busyProductIds.delete(item.productId);
         renderWishlistView();

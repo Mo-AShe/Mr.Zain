@@ -29,6 +29,7 @@ export interface CartItemDTO {
   availableStock: number;
   inStock: boolean;
   exceedsStock: boolean;
+  isAvailable: boolean;
   itemSubtotal: number;
   variant: {
     id: string;
@@ -92,6 +93,8 @@ export async function getCustomerCart(userId: string): Promise<CartDTO> {
       color: productVariants.color,
       variantPrice: productVariants.price,
       variantIsActive: productVariants.isActive,
+      productIsPublished: products.isPublished,
+      categoryIsActive: categories.isActive,
       productId: products.id,
       productSlug: products.slug,
       nameEn: products.nameEn,
@@ -105,14 +108,7 @@ export async function getCustomerCart(userId: string): Promise<CartDTO> {
     .innerJoin(products, eq(products.id, productVariants.productId))
     .innerJoin(categories, eq(categories.id, products.categoryId))
     .leftJoin(inventory, eq(inventory.variantId, productVariants.id))
-    .where(
-      and(
-        eq(cartItems.cartId, cart.id),
-        eq(products.isPublished, true),
-        eq(categories.isActive, true),
-        eq(productVariants.isActive, true)
-      )
-    )
+    .where(eq(cartItems.cartId, cart.id))
     .orderBy(asc(cartItems.id));
 
   if (rows.length === 0) {
@@ -147,8 +143,11 @@ export async function getCustomerCart(userId: string): Promise<CartDTO> {
       row.invQuantity,
       row.invReservedQuantity
     );
+    const isAvailable =
+      row.productIsPublished && row.categoryIsActive && row.variantIsActive;
     const itemSubtotal = roundCurrency(unitPrice * quantity);
-    const exceedsStock = quantity > availableStock || availableStock <= 0;
+    const exceedsStock =
+      !isAvailable || quantity > availableStock || availableStock <= 0;
 
     totalItemCount += quantity;
     subtotal = roundCurrency(subtotal + itemSubtotal);
@@ -171,9 +170,10 @@ export async function getCustomerCart(userId: string): Promise<CartDTO> {
       compareAtPrice:
         row.compareAtPrice !== null ? Number(row.compareAtPrice) : null,
       quantity,
-      availableStock,
-      inStock: availableStock > 0,
+      availableStock: isAvailable ? availableStock : 0,
+      inStock: isAvailable && availableStock > 0,
       exceedsStock,
+      isAvailable,
       itemSubtotal,
       variant: {
         id: row.variantId,

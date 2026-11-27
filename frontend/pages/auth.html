@@ -4,6 +4,9 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Account Access — MR. ZAIN</title>
+    <link rel="icon" type="image/x-icon" href="/assets/icons/favicon.ico" sizes="any" />
+    <link rel="icon" type="image/png" sizes="32x32" href="/assets/icons/favicon-32x32.png" />
+    <link rel="apple-touch-icon" sizes="180x180" href="/assets/icons/apple-touch-icon.png" />
     <meta
       name="description"
       content="Sign in or create your MR. ZAIN customer account across Egypt."
@@ -185,7 +188,7 @@
                 </div>
 
                 <div class="field">
-                  <label class="field__label" for="register-phone" data-i18n="auth.phone">Phone Number (Optional)</label>
+                  <label class="field__label" for="register-phone" data-i18n="auth.phone">Phone Number *</label>
                   <input
                     id="register-phone"
                     name="phone"
@@ -194,6 +197,7 @@
                     class="input"
                     data-i18n-placeholder="auth.phonePlaceholder"
                     placeholder="+20 100 123 4567"
+                    required
                   />
                   <span class="field__hint" data-i18n="auth.phoneHint">Egyptian mobile format (+201XXXXXXXXX or 01XXXXXXXXX).</span>
                   <span id="err-register-phone" class="form-error" aria-live="polite"></span>

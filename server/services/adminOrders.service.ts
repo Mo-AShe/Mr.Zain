@@ -22,9 +22,10 @@ import type {
 } from "../validators/adminOrders.validators.js";
 import {
   ALLOWED_ORDER_TRANSITIONS,
+  isAllowedOrderTransition,
   type OrderStatus,
-  type ShippingAddressSnapshotDTO,
-} from "./order.service.js";
+} from "./order-status.js";
+import type { ShippingAddressSnapshotDTO } from "./order.service.js";
 import { roundCurrency } from "./shipping.service.js";
 
 export interface AdminOrderSummaryDTO {
@@ -65,7 +66,6 @@ export interface AdminOrderStatusHistoryDTO {
 export interface AdminOrderInventoryMovementDTO {
   id: string;
   variantId: string;
-  sku: string;
   size: string;
   color: string;
   movementType: string;
@@ -85,7 +85,6 @@ export interface AdminOrderItemDTO {
   productNameSnapshot: string;
   sizeSnapshot: string;
   colorSnapshot: string;
-  skuSnapshot: string;
   unitPrice: number;
   quantity: number;
   totalPrice: number;
@@ -344,7 +343,6 @@ async function getAdminOrderDetailFromExecutor(
         productNameSnapshot: orderItems.productNameSnapshot,
         sizeSnapshot: orderItems.sizeSnapshot,
         colorSnapshot: orderItems.colorSnapshot,
-        skuSnapshot: orderItems.skuSnapshot,
         unitPrice: orderItems.unitPrice,
         quantity: orderItems.quantity,
         totalPrice: orderItems.totalPrice,
@@ -380,7 +378,6 @@ async function getAdminOrderDetailFromExecutor(
       .select({
         id: inventoryMovements.id,
         variantId: inventoryMovements.variantId,
-        sku: productVariants.sku,
         size: productVariants.size,
         color: productVariants.color,
         movementType: inventoryMovements.movementType,
@@ -427,7 +424,6 @@ async function getAdminOrderDetailFromExecutor(
     productNameSnapshot: item.productNameSnapshot,
     sizeSnapshot: item.sizeSnapshot,
     colorSnapshot: item.colorSnapshot,
-    skuSnapshot: item.skuSnapshot,
     unitPrice: roundCurrency(Number(item.unitPrice)),
     quantity: item.quantity,
     totalPrice: roundCurrency(Number(item.totalPrice)),
@@ -493,7 +489,6 @@ async function getAdminOrderDetailFromExecutor(
     inventoryMovements: movementRows.map((m) => ({
       id: m.id,
       variantId: m.variantId,
-      sku: m.sku,
       size: m.size,
       color: m.color,
       movementType: m.movementType,
@@ -541,8 +536,7 @@ export async function updateAdminOrderStatus(
       );
     }
 
-    const allowedNext = ALLOWED_ORDER_TRANSITIONS[currentStatus] ?? [];
-    if (!allowedNext.includes(input.status)) {
+    if (!isAllowedOrderTransition(currentStatus, input.status)) {
       throw new AppError(
         `Transition from "${currentStatus}" to "${input.status}" is not allowed.`,
         409,

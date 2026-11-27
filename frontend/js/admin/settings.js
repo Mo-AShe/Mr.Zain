@@ -7,6 +7,11 @@ import { showToast } from "../components/ui.js";
 import { escapeHtml } from "../utils/formatters.js";
 import {
   fetchAdminSettings,
+  createAdminBannerRequest,
+  deleteAdminBannerRequest,
+  discardStagedAdminProductImageRequest,
+  stageAdminProductImageRequest,
+  updateAdminBannerRequest,
   updateAdminAvailabilityRequest,
   updateAdminGeneralSettingsRequest,
   updateAdminHomepageRequest,
@@ -91,12 +96,27 @@ function renderStoreInfoTab(data, lang) {
 
         <div class="field">
           <label class="field__label" for="st-phone">${escapeHtml(t("adminOps.settings.fieldPhone", lang))}</label>
-          <input id="st-phone" type="tel" class="input tabular-nums" dir="ltr" maxlength="40" value="${escapeHtml(info.contactPhone)}" required />
+          <input id="st-phone" type="tel" class="input tabular-nums" dir="ltr" maxlength="40" value="${escapeHtml(info.contactPhone)}" />
         </div>
 
         <div class="field">
           <label class="field__label" for="st-whatsapp">${escapeHtml(t("adminOps.settings.fieldWhatsapp", lang))}</label>
-          <input id="st-whatsapp" type="tel" class="input tabular-nums" dir="ltr" maxlength="40" value="${escapeHtml(info.whatsappNumber)}" required />
+          <textarea id="st-whatsapp" class="textarea admin-textarea tabular-nums" dir="ltr" rows="3" maxlength="500">${escapeHtml(info.whatsappNumber)}</textarea>
+        </div>
+
+        <div class="field">
+          <label class="field__label" for="st-instagram">${escapeHtml(t("adminOps.settings.fieldInstagramUrl", lang))}</label>
+          <input id="st-instagram" type="url" class="input" dir="ltr" maxlength="500" value="${escapeHtml(info.instagramUrl || "")}" />
+        </div>
+
+        <div class="field">
+          <label class="field__label" for="st-tiktok">${escapeHtml(t("adminOps.settings.fieldTiktokUrl", lang))}</label>
+          <input id="st-tiktok" type="url" class="input" dir="ltr" maxlength="500" value="${escapeHtml(info.tiktokUrl || "")}" />
+        </div>
+
+        <div class="field">
+          <label class="field__label" for="st-facebook">${escapeHtml(t("adminOps.settings.fieldFacebookUrl", lang))}</label>
+          <input id="st-facebook" type="url" class="input" dir="ltr" maxlength="500" value="${escapeHtml(info.facebookUrl || "")}" />
         </div>
 
         <div class="field">
@@ -353,6 +373,7 @@ function renderHomepageTab(data, lang) {
           </div>
         `
         }
+
       </div>
 
       <div class="admin-policy-card">
@@ -404,6 +425,94 @@ function renderHomepageTab(data, lang) {
   `;
 }
 
+function renderBannersTab(data, lang) {
+  const banners = Array.isArray(data.banners) ? data.banners : [];
+  const renderBannerForm = (banner = null) => {
+    const formId = banner?.id || "new";
+    return `
+    <article class="admin-policy-card">
+      <form class="admin-form" data-banner-form data-banner-id="${escapeHtml(banner?.id || "")}" novalidate>
+        <div class="admin-policy-card__head">
+          <strong class="admin-policy-card__title">
+            ${escapeHtml(banner ? t("adminOps.settings.bannerEditTitle", lang) : t("adminOps.settings.bannerCreateTitle", lang))}
+          </strong>
+          ${
+            banner?.imageUrl
+              ? `<img src="${escapeHtml(banner.imageUrl)}" alt="" width="120" height="72" style="object-fit: cover; border-radius: var(--radius-sm);" />`
+              : ""
+          }
+        </div>
+        <div class="admin-form-grid">
+          <div class="field">
+            <label class="field__label" for="banner-title-en-${escapeHtml(formId)}">${escapeHtml(t("adminOps.settings.bannerTitleEn", lang))}</label>
+            <input id="banner-title-en-${escapeHtml(formId)}" name="titleEn" type="text" class="input" dir="ltr" maxlength="200" value="${escapeHtml(banner?.titleEn || "")}" required />
+          </div>
+          <div class="field">
+            <label class="field__label" for="banner-title-ar-${escapeHtml(formId)}">${escapeHtml(t("adminOps.settings.bannerTitleAr", lang))}</label>
+            <input id="banner-title-ar-${escapeHtml(formId)}" name="titleAr" type="text" class="input" dir="rtl" maxlength="200" value="${escapeHtml(banner?.titleAr || "")}" required />
+          </div>
+          <div class="field">
+            <label class="field__label" for="banner-subtitle-en-${escapeHtml(formId)}">${escapeHtml(t("adminOps.settings.bannerSubtitleEn", lang))}</label>
+            <textarea id="banner-subtitle-en-${escapeHtml(formId)}" name="subtitleEn" class="textarea admin-textarea" dir="ltr" maxlength="300">${escapeHtml(banner?.subtitleEn || "")}</textarea>
+          </div>
+          <div class="field">
+            <label class="field__label" for="banner-subtitle-ar-${escapeHtml(formId)}">${escapeHtml(t("adminOps.settings.bannerSubtitleAr", lang))}</label>
+            <textarea id="banner-subtitle-ar-${escapeHtml(formId)}" name="subtitleAr" class="textarea admin-textarea" dir="rtl" maxlength="300">${escapeHtml(banner?.subtitleAr || "")}</textarea>
+          </div>
+          <div class="field">
+            <label class="field__label" for="banner-image-${escapeHtml(formId)}">${escapeHtml(t("adminOps.settings.bannerImage", lang))}</label>
+            <input id="banner-image-${escapeHtml(formId)}" name="image" type="file" class="input" accept="image/jpeg,image/png,image/webp" />
+            <span class="field__hint">${escapeHtml(t("adminOps.settings.bannerImageHint", lang))}</span>
+          </div>
+          <div class="field">
+            <label class="field__label" for="banner-image-url-${escapeHtml(formId)}">${escapeHtml(t("adminOps.settings.bannerImageUrl", lang))}</label>
+            <input id="banner-image-url-${escapeHtml(formId)}" name="imageUrl" type="url" class="input" dir="ltr" maxlength="2000" placeholder="https://example.com/banner.jpg" value="${escapeHtml(banner?.imageUrl?.startsWith("http") ? banner.imageUrl : "")}" />
+            <span class="field__hint">${escapeHtml(t("adminOps.settings.bannerImageUrlHint", lang))}</span>
+          </div>
+          <div class="field">
+            <label class="field__label" for="banner-link-${escapeHtml(formId)}">${escapeHtml(t("adminOps.settings.bannerLink", lang))}</label>
+            <input id="banner-link-${escapeHtml(formId)}" name="targetUrl" type="text" class="input" dir="ltr" maxlength="500" placeholder="/shop.html?category=jackets" value="${escapeHtml(banner?.targetUrl || "")}" />
+          </div>
+          <div class="field">
+            <label class="field__label" for="banner-order-${escapeHtml(formId)}">${escapeHtml(t("adminOps.settings.bannerOrder", lang))}</label>
+            <input id="banner-order-${escapeHtml(formId)}" name="displayOrder" type="number" class="input" min="0" max="10000" step="1" value="${escapeHtml(String(banner?.displayOrder ?? banners.length))}" required />
+          </div>
+          <label class="admin-checkbox">
+            <input name="isActive" type="checkbox" ${banner?.isActive !== false ? "checked" : ""} />
+            <span>${escapeHtml(t("adminOps.settings.bannerActive", lang))}</span>
+          </label>
+        </div>
+        <div style="display: flex; justify-content: flex-end; gap: 0.75rem;">
+          ${
+            banner
+              ? `<button type="button" class="btn btn--secondary btn--sm" data-delete-banner="${escapeHtml(banner.id)}">${escapeHtml(t("adminOps.settings.bannerDelete", lang))}</button>`
+              : ""
+          }
+          <button type="submit" class="btn btn--primary btn--sm">
+            ${escapeHtml(banner ? t("adminOps.settings.bannerSave", lang) : t("adminOps.settings.bannerCreate", lang))}
+          </button>
+        </div>
+      </form>
+    </article>
+  `;
+  };
+
+  return `
+    <div class="admin-page-head">
+      <div>
+        <h2 class="admin-page-head__title">${escapeHtml(t("adminOps.settings.bannersTitle", lang))}</h2>
+        <p class="admin-page-head__subtitle">${escapeHtml(t("adminOps.settings.bannersHint", lang))}</p>
+      </div>
+    </div>
+    ${renderBannerForm()}
+    ${
+      banners.length
+        ? banners.map((banner) => renderBannerForm(banner)).join("")
+        : `<div class="admin-state-box admin-state-box--inline"><p class="admin-state-box__desc">${escapeHtml(t("adminOps.settings.bannersEmpty", lang))}</p></div>`
+    }
+  `;
+}
+
 export function renderSettingsSection(mainEl, { onAuthError, onRender } = {}) {
   const lang = getLanguage();
 
@@ -439,6 +548,9 @@ export function renderSettingsSection(mainEl, { onAuthError, onRender } = {}) {
         <button type="button" class="admin-tabs__btn ${settingsState.activeTab === "homepage" ? "is-active" : ""}" data-settings-tab="homepage">
           ${escapeHtml(t("adminOps.settings.tabHomepage", lang))}
         </button>
+        <button type="button" class="admin-tabs__btn ${settingsState.activeTab === "banners" ? "is-active" : ""}" data-settings-tab="banners">
+          ${escapeHtml(t("adminOps.settings.tabBanners", lang))}
+        </button>
       </div>
     </div>
 
@@ -454,6 +566,8 @@ export function renderSettingsSection(mainEl, { onAuthError, onRender } = {}) {
           ? renderPoliciesTab(settingsState.data, lang)
           : settingsState.activeTab === "availability"
           ? renderAvailabilityTab(settingsState.data, lang)
+          : settingsState.activeTab === "banners"
+          ? renderBannersTab(settingsState.data, lang)
           : renderHomepageTab(settingsState.data, lang)
       }
     </section>
@@ -483,6 +597,100 @@ export function renderSettingsSection(mainEl, { onAuthError, onRender } = {}) {
     }
   });
 
+  mainEl.querySelectorAll("[data-banner-form]").forEach((form) => {
+    form.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const currentForm = event.currentTarget;
+      const bannerId = currentForm.getAttribute("data-banner-id");
+      const formData = new FormData(currentForm);
+      const imageFile = formData.get("image");
+      const imageUrl = String(formData.get("imageUrl") || "").trim();
+      let uploadId = null;
+      settingsState.saving = true;
+      onRender();
+      try {
+        if (imageUrl && imageFile instanceof File && imageFile.size > 0) {
+          throw new Error(t("adminOps.settings.bannerImageSourceConflict", getLanguage()));
+        }
+        if (imageFile instanceof File && imageFile.size > 0) {
+          uploadId = await stageAdminProductImageRequest(imageFile);
+        }
+        const payload = {
+          titleEn: String(formData.get("titleEn") || "").trim(),
+          titleAr: String(formData.get("titleAr") || "").trim(),
+          subtitleEn: String(formData.get("subtitleEn") || "").trim(),
+          subtitleAr: String(formData.get("subtitleAr") || "").trim(),
+          targetUrl: String(formData.get("targetUrl") || "").trim(),
+          displayOrder: Number(formData.get("displayOrder")),
+          isActive: formData.get("isActive") === "on",
+          ...(uploadId ? { imageUploadId: uploadId } : {}),
+          ...(imageUrl ? { imageUrl } : {}),
+        };
+        let savedBanner;
+        if (bannerId) {
+          savedBanner = await updateAdminBannerRequest(bannerId, payload);
+        } else {
+          if (!uploadId && !imageUrl) {
+            throw new Error(t("adminOps.settings.bannerImageRequired", getLanguage()));
+          }
+          savedBanner = await createAdminBannerRequest(payload);
+        }
+        if (!savedBanner?.id) {
+          throw new Error(t("adminOps.common.errorTitle", getLanguage()));
+        }
+        const banners = settingsState.data?.banners || [];
+        settingsState.data.banners = [
+          ...banners.filter((banner) => banner.id !== savedBanner.id),
+          savedBanner,
+        ].sort(
+          (a, b) => a.displayOrder - b.displayOrder || a.id.localeCompare(b.id)
+        );
+        showToast(t("adminOps.settings.bannersSaved", getLanguage()), "success");
+      } catch (error) {
+        if (uploadId) {
+          await discardStagedAdminProductImageRequest(uploadId).catch((cleanupError) => {
+            console.error("Could not clean up an unused staged banner image.", cleanupError);
+          });
+        }
+        if (error && (error.status === 401 || error.status === 403)) {
+          if (typeof onAuthError === "function") await onAuthError(error);
+          return;
+        }
+        showToast(error?.message || t("adminOps.common.errorTitle", getLanguage()), "error");
+      } finally {
+        settingsState.saving = false;
+        onRender();
+      }
+    });
+  });
+
+  mainEl.querySelectorAll("[data-delete-banner]").forEach((button) => {
+    button.addEventListener("click", async () => {
+      const bannerId = button.getAttribute("data-delete-banner");
+      if (!bannerId || !window.confirm(t("adminOps.settings.bannerDeleteConfirm", getLanguage()))) {
+        return;
+      }
+      settingsState.saving = true;
+      onRender();
+      try {
+        await deleteAdminBannerRequest(bannerId);
+        settingsState.data.banners = (settingsState.data?.banners || []).filter(
+          (banner) => banner.id !== bannerId
+        );
+        showToast(t("adminOps.settings.bannerDeleted", getLanguage()), "success");
+      } catch (error) {
+        if (error && (error.status === 401 || error.status === 403)) {
+          if (typeof onAuthError === "function") await onAuthError(error);
+          return;
+        }
+        showToast(error?.message || t("adminOps.common.errorTitle", getLanguage()), "error");
+      } finally {
+        settingsState.saving = false;
+        onRender();
+      }
+    });
+  });
+
   document.getElementById("settings-info-form")?.addEventListener("submit", async (e) => {
     e.preventDefault();
     const errEl = document.getElementById("settings-info-error");
@@ -496,6 +704,9 @@ export function renderSettingsSection(mainEl, { onAuthError, onRender } = {}) {
     const contactEmail = document.getElementById("st-email")?.value.trim() || "";
     const contactPhone = document.getElementById("st-phone")?.value.trim() || "";
     const whatsappNumber = document.getElementById("st-whatsapp")?.value.trim() || "";
+    const instagramUrl = document.getElementById("st-instagram")?.value.trim() || "";
+    const tiktokUrl = document.getElementById("st-tiktok")?.value.trim() || "";
+    const facebookUrl = document.getElementById("st-facebook")?.value.trim() || "";
 
     if (storeName.length < 2) {
       if (errEl) {
@@ -521,6 +732,9 @@ export function renderSettingsSection(mainEl, { onAuthError, onRender } = {}) {
           contactEmail,
           contactPhone,
           whatsappNumber,
+          instagramUrl,
+          tiktokUrl,
+          facebookUrl,
           storeAddressEn: document.getElementById("st-addr-en")?.value.trim() || "",
           storeAddressAr: document.getElementById("st-addr-ar")?.value.trim() || "",
           supportHoursEn: document.getElementById("st-hours-en")?.value.trim() || "",

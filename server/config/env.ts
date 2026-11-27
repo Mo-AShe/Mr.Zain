@@ -31,9 +31,8 @@ export const env = {
     })(),
   sessionCookieName: "mz_session",
   csrfCookieName: "mz_csrf",
-  sessionTtlMs: 24 * 60 * 60 * 1000, // 24 hours
-  rememberMeTtlMs: 30 * 24 * 60 * 60 * 1000, // 30 days
-  jwtExpiresIn: process.env.JWT_EXPIRES_IN || "7d",
   corsOrigin: process.env.CORS_ORIGIN || "*",
   maxUploadBytes: Number(process.env.MAX_UPLOAD_BYTES || 5 * 1024 * 1024),
+  productImageStorageDir:
+    process.env.PRODUCT_IMAGE_STORAGE_DIR || "frontend/uploads/products",
 } as const;

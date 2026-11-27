@@ -25,23 +25,28 @@ const invState = {
   loading: false,
   error: "",
   loadedOnce: false,
+  stockRequestId: 0,
+  summaryRequestId: 0,
   items: [],
   pagination: { page: 1, limit: 15, total: 0, totalPages: 1 },
   filters: {
     search: "",
+    searchDraft: "",
     stockStatus: "all",
-    activeOnly: "all",
+    activeOnly: "active",
     sort: "updated_desc",
   },
   movLoading: false,
   movError: "",
   movLoadedOnce: false,
+  movementsRequestId: 0,
   movements: [],
   movPagination: { page: 1, limit: 20, total: 0, totalPages: 1 },
   movFilters: {
     variantId: "",
     variantLabel: "",
     search: "",
+    searchDraft: "",
     movementType: "all",
     startDate: "",
     endDate: "",
@@ -91,11 +96,18 @@ function localizeMovementType(type, lang) {
 }
 
 export function resetInventoryLoadState() {
+  invState.stockRequestId += 1;
+  invState.movementsRequestId += 1;
+  invState.summaryRequestId += 1;
+  invState.loading = false;
+  invState.movLoading = false;
   invState.loadedOnce = false;
   invState.movLoadedOnce = false;
 }
 
 export async function loadAdminInventoryStock({ onAuthError, onRender } = {}) {
+  const requestId = ++invState.stockRequestId;
+  const summaryRequestId = ++invState.summaryRequestId;
   invState.loading = true;
   invState.error = "";
   if (typeof onRender === "function") onRender();
@@ -113,7 +125,8 @@ export async function loadAdminInventoryStock({ onAuthError, onRender } = {}) {
       }),
     ]);
 
-    invState.summary = summary;
+    if (requestId !== invState.stockRequestId) return;
+    if (summaryRequestId === invState.summaryRequestId) invState.summary = summary;
     invState.items = Array.isArray(listRes?.items) ? listRes.items : [];
     invState.pagination = listRes?.pagination || {
       page: 1,
@@ -123,25 +136,30 @@ export async function loadAdminInventoryStock({ onAuthError, onRender } = {}) {
     };
     invState.loadedOnce = true;
   } catch (err) {
+    if (requestId !== invState.stockRequestId) return;
     if (err && (err.status === 401 || err.status === 403)) {
       if (typeof onAuthError === "function") await onAuthError(err);
       return;
     }
     invState.error = err?.message || t("adminOps.common.errorTitle", getLanguage());
   } finally {
-    invState.loading = false;
-    if (typeof onRender === "function") onRender();
+    if (requestId === invState.stockRequestId) {
+      invState.loading = false;
+      if (typeof onRender === "function") onRender();
+    }
   }
 }
 
 export async function loadAdminInventoryMovements({ onAuthError, onRender } = {}) {
+  const requestId = ++invState.movementsRequestId;
+  const summaryRequestId = ++invState.summaryRequestId;
   invState.movLoading = true;
   invState.movError = "";
   if (typeof onRender === "function") onRender();
 
   try {
     const [summary, movRes] = await Promise.all([
-      invState.summary ? Promise.resolve(invState.summary) : fetchAdminInventorySummary(),
+      fetchAdminInventorySummary(),
       fetchAdminInventoryMovements({
         variantId: invState.movFilters.variantId,
         search: invState.movFilters.search,
@@ -153,7 +171,8 @@ export async function loadAdminInventoryMovements({ onAuthError, onRender } = {}
       }),
     ]);
 
-    invState.summary = summary;
+    if (requestId !== invState.movementsRequestId) return;
+    if (summaryRequestId === invState.summaryRequestId) invState.summary = summary;
     invState.movements = Array.isArray(movRes?.movements) ? movRes.movements : [];
     invState.movPagination = movRes?.pagination || {
       page: 1,
@@ -163,14 +182,17 @@ export async function loadAdminInventoryMovements({ onAuthError, onRender } = {}
     };
     invState.movLoadedOnce = true;
   } catch (err) {
+    if (requestId !== invState.movementsRequestId) return;
     if (err && (err.status === 401 || err.status === 403)) {
       if (typeof onAuthError === "function") await onAuthError(err);
       return;
     }
     invState.movError = err?.message || t("adminOps.common.errorTitle", getLanguage());
   } finally {
-    invState.movLoading = false;
-    if (typeof onRender === "function") onRender();
+    if (requestId === invState.movementsRequestId) {
+      invState.movLoading = false;
+      if (typeof onRender === "function") onRender();
+    }
   }
 }
 
@@ -205,7 +227,7 @@ function openStockAdjustmentModal(item, { onAuthError, onRender }) {
         <strong class="admin-calc-preview__val tabular-nums">${escapeHtml(formatCount(item.reservedQuantity))}</strong>
       </div>
       <div class="admin-calc-preview__item">
-        <span class="admin-calc-preview__label">${escapeHtml(t("adminOps.inventory.previewNewAvailable", lang))}</span>
+        <span class="admin-calc-preview__label">${escapeHtml(t("adminOps.inventory.previewCurrentAvailable", lang))}</span>
         <strong class="admin-calc-preview__val tabular-nums" id="inv-preview-available">${escapeHtml(formatCount(item.availableQuantity))}</strong>
       </div>
     </div>
@@ -221,7 +243,7 @@ function openStockAdjustmentModal(item, { onAuthError, onRender }) {
       </div>
       <div class="field">
         <label class="field__label" for="inv-adj-amount">${escapeHtml(t("adminOps.inventory.amountLabel", lang))}</label>
-        <input id="inv-adj-amount" class="input tabular-nums" type="number" min="0" step="1" value="1" required />
+        <input id="inv-adj-amount" class="input tabular-nums" type="number" min="0" max="1000000" step="1" value="1" required />
       </div>
       <div class="field admin-form-full">
         <label class="field__label" for="inv-adj-reason">${escapeHtml(t("adminOps.inventory.reasonLabel", lang))}</label>
@@ -250,7 +272,7 @@ function openStockAdjustmentModal(item, { onAuthError, onRender }) {
       </div>
     </div>
 
-    <div id="inv-adj-error" class="admin-form-error" hidden></div>
+    <div id="inv-adj-error" class="admin-form-error" aria-live="polite" hidden></div>
   `;
 
   const modeEl = body.querySelector("#inv-adj-mode");
@@ -308,7 +330,7 @@ function openStockAdjustmentModal(item, { onAuthError, onRender }) {
   modeEl?.addEventListener("change", () => {
     if (modeEl.value === "set" && amountEl) {
       amountEl.value = String(item.quantity);
-    } else if (amountEl && Number(amountEl.value) < 1) {
+    } else if (amountEl) {
       amountEl.value = "1";
     }
     updatePreview();
@@ -317,9 +339,7 @@ function openStockAdjustmentModal(item, { onAuthError, onRender }) {
   updatePreview();
 
   const footer = document.createElement("div");
-  footer.style.display = "flex";
-  footer.style.gap = "0.75rem";
-  footer.style.justifyContent = "flex-end";
+  footer.className = "modal-footer";
 
   const cancelBtn = document.createElement("button");
   cancelBtn.type = "button";
@@ -401,12 +421,15 @@ function openStockAdjustmentModal(item, { onAuthError, onRender }) {
     void submitAdjustment();
   });
 
+  body.append(footer);
+
   openModal({
     title: formatTemplate(t("adminOps.inventory.adjustModalTitle", lang), {
-      sku: item.sku,
+      product: productTitle,
+      size: item.size,
+      color: item.color,
     }),
-    body,
-    footer,
+    content: body,
   });
 }
 
@@ -430,16 +453,14 @@ function openThresholdModal(item, { onAuthError, onRender }) {
         required
       />
     </div>
-    <div id="inv-threshold-error" class="admin-form-error" hidden></div>
+    <div id="inv-threshold-error" class="admin-form-error" aria-live="polite" hidden></div>
   `;
 
   const inputEl = body.querySelector("#inv-threshold-input");
   const errorEl = body.querySelector("#inv-threshold-error");
 
   const footer = document.createElement("div");
-  footer.style.display = "flex";
-  footer.style.gap = "0.75rem";
-  footer.style.justifyContent = "flex-end";
+  footer.className = "modal-footer";
 
   const cancelBtn = document.createElement("button");
   cancelBtn.type = "button";
@@ -491,12 +512,15 @@ function openThresholdModal(item, { onAuthError, onRender }) {
     void submit();
   });
 
+  body.append(footer);
+
   openModal({
     title: formatTemplate(t("adminOps.inventory.thresholdModalTitle", lang), {
-      sku: item.sku,
+      product: lang === "ar" ? item.productNameAr || item.productNameEn : item.productNameEn || item.productNameAr,
+      size: item.size,
+      color: item.color,
     }),
-    body,
-    footer,
+    content: body,
   });
 }
 
@@ -538,6 +562,10 @@ function renderSummaryCardsHtml(summary, lang) {
 export function renderInventorySection(mainEl, { onAuthError, onRender }) {
   if (!mainEl) return;
   const lang = getLanguage();
+  const stockSearchInput = mainEl.querySelector("#inv-search-input");
+  const movementsSearchInput = mainEl.querySelector("#inv-mov-search");
+  if (stockSearchInput) invState.filters.searchDraft = stockSearchInput.value;
+  if (movementsSearchInput) invState.movFilters.searchDraft = movementsSearchInput.value;
 
   if (invState.activeTab === "stock" && !invState.loadedOnce && !invState.loading && !invState.error) {
     void loadAdminInventoryStock({ onAuthError, onRender });
@@ -561,19 +589,23 @@ export function renderInventorySection(mainEl, { onAuthError, onRender }) {
         <div class="admin-tabs" role="tablist">
           <button
             type="button"
+            id="inv-tab-stock"
             class="admin-tabs__btn ${invState.activeTab === "stock" ? "is-active" : ""}"
             data-inv-tab="stock"
             role="tab"
             aria-selected="${invState.activeTab === "stock" ? "true" : "false"}"
+            aria-controls="inv-stock-panel"
           >
             ${escapeHtml(t("adminOps.inventory.tabStock", lang))}
           </button>
           <button
             type="button"
+            id="inv-tab-movements"
             class="admin-tabs__btn ${invState.activeTab === "movements" ? "is-active" : ""}"
             data-inv-tab="movements"
             role="tab"
             aria-selected="${invState.activeTab === "movements" ? "true" : "false"}"
+            aria-controls="inv-movements-panel"
           >
             ${escapeHtml(t("adminOps.inventory.tabMovements", lang))}
           </button>
@@ -594,14 +626,14 @@ export function renderInventorySection(mainEl, { onAuthError, onRender }) {
 
     mainEl.innerHTML = `
       ${headHtml}
-      <section class="admin-panel">
+      <section class="admin-panel" id="inv-stock-panel" role="tabpanel" aria-labelledby="inv-tab-stock" tabindex="0">
         <form class="admin-toolbar" id="inv-filter-form">
           <div class="admin-toolbar__filters">
             <input
               type="search"
               id="inv-search-input"
               class="input admin-toolbar__search"
-              value="${escapeHtml(invState.filters.search)}"
+              value="${escapeHtml(invState.filters.searchDraft)}"
               placeholder="${escapeHtml(t("adminOps.inventory.searchPlaceholder", lang))}"
             />
             <select id="inv-status-select" class="select admin-toolbar__select">
@@ -621,7 +653,6 @@ export function renderInventorySection(mainEl, { onAuthError, onRender }) {
               <option value="available_asc" ${invState.filters.sort === "available_asc" ? "selected" : ""}>${escapeHtml(t("adminOps.inventory.sortAvailableAsc", lang))}</option>
               <option value="available_desc" ${invState.filters.sort === "available_desc" ? "selected" : ""}>${escapeHtml(t("adminOps.inventory.sortAvailableDesc", lang))}</option>
               <option value="product_asc" ${invState.filters.sort === "product_asc" ? "selected" : ""}>${escapeHtml(t("adminOps.inventory.sortProductAsc", lang))}</option>
-              <option value="sku_asc" ${invState.filters.sort === "sku_asc" ? "selected" : ""}>${escapeHtml(t("adminOps.inventory.sortSkuAsc", lang))}</option>
             </select>
             <button type="submit" class="btn btn--primary btn--sm">
               ${escapeHtml(t("adminOps.common.applyBtn", lang))}
@@ -631,10 +662,10 @@ export function renderInventorySection(mainEl, { onAuthError, onRender }) {
 
         ${
           invState.loading
-            ? '<div class="admin-skeleton" style="width: 100%; height: 240px;"></div>'
+            ? '<div class="admin-skeleton" role="status" aria-live="polite" style="width: 100%; height: 240px;"></div>'
             : invState.error
             ? `
-              <div class="admin-state-box admin-state-box--inline">
+              <div class="admin-state-box admin-state-box--inline" aria-live="polite">
                 <strong class="admin-state-box__title">${escapeHtml(t("adminOps.common.errorTitle", lang))}</strong>
                 <p class="admin-state-box__desc">${escapeHtml(invState.error)}</p>
                 <button type="button" class="btn btn--secondary btn--sm" id="inv-retry-btn">${escapeHtml(t("adminOps.common.retryBtn", lang))}</button>
@@ -653,7 +684,6 @@ export function renderInventorySection(mainEl, { onAuthError, onRender }) {
                   <thead>
                     <tr>
                       <th>${escapeHtml(t("adminOps.inventory.colVariant", lang))}</th>
-                      <th>${escapeHtml(t("adminOps.inventory.colSku", lang))}</th>
                       <th class="admin-table__num">${escapeHtml(t("adminOps.inventory.colAvailable", lang))}</th>
                       <th class="admin-table__num">${escapeHtml(t("adminOps.inventory.colReserved", lang))}</th>
                       <th class="admin-table__num">${escapeHtml(t("adminOps.inventory.colPhysical", lang))}</th>
@@ -690,7 +720,6 @@ export function renderInventorySection(mainEl, { onAuthError, onRender }) {
                                 </div>
                               </div>
                             </td>
-                            <td class="tabular-nums"><strong>${escapeHtml(item.sku)}</strong></td>
                             <td class="admin-table__num"><strong>${escapeHtml(formatCount(item.availableQuantity))}</strong></td>
                             <td class="admin-table__num text-muted">${escapeHtml(formatCount(item.reservedQuantity))}</td>
                             <td class="admin-table__num">${escapeHtml(formatCount(item.quantity))}</td>
@@ -811,7 +840,10 @@ export function renderInventorySection(mainEl, { onAuthError, onRender }) {
         const item = invState.items.find((i) => i.variantId === vid);
         invState.activeTab = "movements";
         invState.movFilters.variantId = vid || "";
-        invState.movFilters.variantLabel = item ? `${item.sku} (${item.size} / ${item.color})` : "";
+        const productName = item
+          ? lang === "ar" ? item.productNameAr || item.productNameEn : item.productNameEn || item.productNameAr
+          : "";
+        invState.movFilters.variantLabel = item ? `${productName} (${item.size} / ${item.color})` : "";
         invState.movPagination.page = 1;
         void loadAdminInventoryMovements({ onAuthError, onRender });
       });
@@ -823,14 +855,14 @@ export function renderInventorySection(mainEl, { onAuthError, onRender }) {
 
     mainEl.innerHTML = `
       ${headHtml}
-      <section class="admin-panel">
+      <section class="admin-panel" id="inv-movements-panel" role="tabpanel" aria-labelledby="inv-tab-movements" tabindex="0">
         <form class="admin-toolbar" id="inv-mov-filter-form">
           <div class="admin-toolbar__filters">
             <input
               type="search"
               id="inv-mov-search"
               class="input admin-toolbar__search"
-              value="${escapeHtml(invState.movFilters.search)}"
+              value="${escapeHtml(invState.movFilters.searchDraft)}"
               placeholder="${escapeHtml(t("adminOps.inventory.movSearchPlaceholder", lang))}"
             />
             <select id="inv-mov-type" class="select admin-toolbar__select">
@@ -859,10 +891,10 @@ export function renderInventorySection(mainEl, { onAuthError, onRender }) {
 
         ${
           invState.movLoading
-            ? '<div class="admin-skeleton" style="width: 100%; height: 240px;"></div>'
+            ? '<div class="admin-skeleton" role="status" aria-live="polite" style="width: 100%; height: 240px;"></div>'
             : invState.movError
             ? `
-              <div class="admin-state-box admin-state-box--inline">
+              <div class="admin-state-box admin-state-box--inline" aria-live="polite">
                 <strong class="admin-state-box__title">${escapeHtml(t("adminOps.common.errorTitle", lang))}</strong>
                 <p class="admin-state-box__desc">${escapeHtml(invState.movError)}</p>
                 <button type="button" class="btn btn--secondary btn--sm" id="inv-mov-retry">${escapeHtml(t("adminOps.common.retryBtn", lang))}</button>
@@ -896,10 +928,18 @@ export function renderInventorySection(mainEl, { onAuthError, onRender }) {
                           lang === "ar"
                             ? m.productNameAr || m.productNameEn
                             : m.productNameEn || m.productNameAr;
-                        const isPos = m.quantity > 0;
-                        const signPrefix = isPos ? "+" : "";
+                        const isPos =
+                          m.movementType === "addition" ||
+                          m.movementType === "cancellation" ||
+                          m.movementType === "return" ||
+                          (!["reservation", "reduction"].includes(m.movementType) && m.quantity > 0);
+                        const signPrefix = isPos ? "+" : "-";
+                        const displayQuantity = `${signPrefix}${formatCount(Math.abs(m.quantity))}`;
                         const beforeAfter =
-                          m.previousQuantity !== null && m.resultingQuantity !== null
+                          m.movementType !== "reservation" &&
+                          m.movementType !== "cancellation" &&
+                          m.previousQuantity !== null &&
+                          m.resultingQuantity !== null
                             ? `${formatCount(m.previousQuantity)} → ${formatCount(m.resultingQuantity)}`
                             : t("adminOps.common.noneLabel", lang);
 
@@ -908,8 +948,8 @@ export function renderInventorySection(mainEl, { onAuthError, onRender }) {
                             <td class="tabular-nums text-muted">${escapeHtml(formatOrderDate(m.createdAt, lang))}</td>
                             <td>
                               <div class="admin-table-item__meta">
-                                <span class="admin-table-item__title">${escapeHtml(m.sku)}</span>
-                                <span class="admin-table-item__sub">${escapeHtml(prodName)} · ${escapeHtml(m.size)} / ${escapeHtml(m.color)}</span>
+                                <span class="admin-table-item__title">${escapeHtml(prodName)}</span>
+                                <span class="admin-table-item__sub">${escapeHtml(m.size)} / ${escapeHtml(m.color)}</span>
                               </div>
                             </td>
                             <td>
@@ -919,7 +959,7 @@ export function renderInventorySection(mainEl, { onAuthError, onRender }) {
                             </td>
                             <td class="admin-table__num tabular-nums">
                               <span class="${isPos ? "admin-delta-pos" : "admin-delta-neg"}">
-                                ${escapeHtml(`${signPrefix}${formatCount(m.quantity)}`)}
+                                ${escapeHtml(displayQuantity)}
                               </span>
                             </td>
                             <td class="admin-table__num tabular-nums">${escapeHtml(beforeAfter)}</td>

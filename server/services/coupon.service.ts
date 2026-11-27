@@ -1,6 +1,6 @@
-import { and, count, eq, sql } from "drizzle-orm";
+import { and, count, eq, ne, sql } from "drizzle-orm";
 import { db } from "../db/index.js";
-import { coupons, couponUsages } from "../db/schema.js";
+import { coupons, couponUsages, orders } from "../db/schema.js";
 import { AppError } from "../middleware/errorHandler.js";
 import { roundCurrency } from "./shipping.service.js";
 
@@ -67,7 +67,13 @@ export async function validateAndCalculateCoupon(params: {
     const [{ value: totalUsed }] = await executor
       .select({ value: count() })
       .from(couponUsages)
-      .where(eq(couponUsages.couponId, coupon.id));
+      .innerJoin(orders, eq(orders.id, couponUsages.orderId))
+      .where(
+        and(
+          eq(couponUsages.couponId, coupon.id),
+          ne(orders.orderStatus, "cancelled")
+        )
+      );
 
     if (Number(totalUsed) >= coupon.usageLimit) {
       throw new AppError(
@@ -81,10 +87,12 @@ export async function validateAndCalculateCoupon(params: {
   const [{ value: customerUsed }] = await executor
     .select({ value: count() })
     .from(couponUsages)
+    .innerJoin(orders, eq(orders.id, couponUsages.orderId))
     .where(
       and(
         eq(couponUsages.couponId, coupon.id),
-        eq(couponUsages.userId, params.userId)
+        eq(couponUsages.userId, params.userId),
+        ne(orders.orderStatus, "cancelled")
       )
     );
 

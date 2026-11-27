@@ -4,6 +4,8 @@
  */
 
 import { getLanguage, t } from "../i18n/i18n.js";
+import { getCachedUser, hasCheckedAuthSession } from "../services/auth-service.js";
+import { hasLoadedWishlist } from "../services/wishlist-service.js";
 import { formatPriceEGP, pickLocalized } from "../utils/formatters.js";
 import { createGarmentPlaceholder, inferGarmentType } from "./placeholders.js";
 
@@ -82,6 +84,9 @@ export function createProductCard(product, options = {}) {
   const wishBtn = document.createElement("button");
   wishBtn.type = "button";
   wishBtn.className = "product-card__wishlist";
+  wishBtn.disabled =
+    !hasCheckedAuthSession() ||
+    (getCachedUser()?.role === "customer" && !hasLoadedWishlist());
   wishBtn.dataset.productId = product.id;
   wishBtn.setAttribute("aria-pressed", String(isWishlisted));
   wishBtn.setAttribute(

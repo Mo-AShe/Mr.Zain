@@ -13,6 +13,10 @@ export function renderAnnouncementBar(container, options = {}) {
 
   const lang = getLanguage();
   const settings = options.settings || getCachedPublicSettings();
+  if (!settings) {
+    container.innerHTML = "";
+    return;
+  }
   const avail = settings?.availability;
 
   if (avail?.isMaintenanceMode) {
