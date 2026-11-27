@@ -61,9 +61,9 @@ export function renderNavbar(container, state = {}) {
           </svg>
         </button>
 
-        <a href=appUrl("/index.html") class="brand-link" aria-label="MR. ZAIN">
+        <a href="${appUrl("/index.html")}" class="brand-link" aria-label="MR. ZAIN">
           <img
-            src=appUrl("/assets/images/mr-zain-logo.png")
+            src="${appUrl("/assets/images/mr-zain-logo.png")}"
             alt="MR. ZAIN"
             class="brand-logo-img"
             referrerPolicy="no-referrer"
@@ -134,7 +134,7 @@ export function renderNavbar(container, state = {}) {
         }
 
         <a
-          href=appUrl("/pages/wishlist.html")
+          href="${appUrl("/pages/wishlist.html")}"
           class="header-icon-btn"
           id="zain-wishlist-trigger"
           aria-label="${t("nav.wishlist", lang)}"
@@ -148,7 +148,7 @@ export function renderNavbar(container, state = {}) {
         </a>
 
         <a
-          href=appUrl("/pages/cart.html")
+          href="${appUrl("/pages/cart.html")}"
           class="header-icon-btn"
           id="zain-bag-trigger"
           aria-label="${t("nav.bag", lang)}"
@@ -201,8 +201,8 @@ function mountMobileDrawer(navLinks, lang, user) {
   drawer.innerHTML = `
     <div>
       <div class="mobile-drawer__header">
-        <a href=appUrl("/index.html") class="brand-link">
-          <img src=appUrl("/assets/images/mr-zain-logo.png") alt="MR. ZAIN" class="brand-logo-img" referrerPolicy="no-referrer" />
+        <a href="${appUrl("/index.html")}" class="brand-link">
+          <img src="${appUrl("/assets/images/mr-zain-logo.png")}" alt="MR. ZAIN" class="brand-logo-img" referrerPolicy="no-referrer" />
         </a>
         <button type="button" class="header-icon-btn" id="zain-mobile-close" aria-label="${t("nav.menuClose", lang)}">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
@@ -225,18 +225,18 @@ function mountMobileDrawer(navLinks, lang, user) {
     </div>
 
     <div class="mobile-drawer__footer">
-      <a href=appUrl("/pages/wishlist.html") class="btn btn--secondary">${escapeHtml(t("nav.wishlist", lang))}</a>
-      <a href=appUrl("/pages/cart.html") class="btn btn--secondary">${escapeHtml(t("nav.bag", lang))}</a>
+      <a href="${appUrl("/pages/wishlist.html")}" class="btn btn--secondary">${escapeHtml(t("nav.wishlist", lang))}</a>
+      <a href="${appUrl("/pages/cart.html")}" class="btn btn--secondary">${escapeHtml(t("nav.bag", lang))}</a>
       ${
         user
           ? `
-          <a href=appUrl("/pages/account.html") class="btn btn--secondary">${escapeHtml(t("nav.myAccount", lang))}</a>
+          <a href="${appUrl("/pages/account.html")}" class="btn btn--secondary">${escapeHtml(t("nav.myAccount", lang))}</a>
           <button type="button" class="btn btn--secondary" id="zain-mobile-logout-btn">
             ${escapeHtml(t("nav.signOut", lang))}
           </button>
         `
           : `
-          <a href=appUrl("/pages/auth.html") class="btn btn--secondary">${escapeHtml(t("nav.signIn", lang))}</a>
+          <a href="${appUrl("/pages/auth.html")}" class="btn btn--secondary">${escapeHtml(t("nav.signIn", lang))}</a>
         `
       }
       <button type="button" class="btn btn--primary" id="zain-mobile-lang-btn">

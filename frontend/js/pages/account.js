@@ -379,7 +379,7 @@ function renderAccountView() {
         <article class="account-card">
           <div class="account-card__header">
             <h2 style="font-size: 1.25rem;">${escapeHtml(t("account.ordersHeading", lang))}</h2>
-            <a href=appUrl("/pages/order-tracking.html") class="btn btn--ghost btn--sm">
+            <a href="${appUrl("/pages/order-tracking.html")}" class="btn btn--ghost btn--sm">
               ${escapeHtml(t("footer.trackOrder", lang))}
             </a>
           </div>

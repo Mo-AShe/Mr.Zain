@@ -78,10 +78,10 @@ function renderConfirmationView() {
       <div id="order-confirmation-detail-slot"></div>
 
       <div class="order-confirmation-actions">
-        <a href=appUrl("/pages/account.html") class="btn btn--primary">
+        <a href="${appUrl("/pages/account.html")}" class="btn btn--primary">
           ${escapeHtml(t("orderConfirmation.viewAccountBtn", lang))}
         </a>
-        <a href=appUrl("/pages/order-tracking.html?orderNumber=${encodeURIComponent(currentOrder.orderNumber)}") class="btn btn--secondary">
+        <a href="${appUrl("/pages/order-tracking.html?orderNumber=" + encodeURIComponent(currentOrder.orderNumber))}" class="btn btn--secondary">
           ${escapeHtml(t("orderConfirmation.trackOrderBtn", lang))}
         </a>
         <a href="/shop.html" class="btn btn--secondary">

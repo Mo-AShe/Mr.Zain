@@ -133,7 +133,7 @@ function renderCartView() {
               <p class="cart-checkout-future-note">${escapeHtml(t("cart.checkoutResolveStockNote", lang))}</p>
             `
               : `
-              <a href=appUrl("/pages/checkout.html") class="btn btn--primary">
+              <a href="${appUrl("/pages/checkout.html")}" class="btn btn--primary">
                 ${escapeHtml(t("cart.proceedCheckout", lang))}
               </a>
             `

@@ -404,7 +404,7 @@ function renderCheckoutView() {
               <h2 class="checkout-step-card__title">${escapeHtml(t("checkout.step2Title", lang))}</h2>
               <p class="checkout-step-card__sub">${escapeHtml(t("checkout.step2Subtitle", lang))}</p>
             </div>
-            <a href=appUrl("/pages/cart.html") class="btn btn--ghost btn--sm">
+            <a href="${appUrl("/pages/cart.html")}" class="btn btn--ghost btn--sm">
               ${escapeHtml(t("checkout.backToBag", lang))}
             </a>
           </div>

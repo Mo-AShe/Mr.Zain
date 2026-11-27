@@ -45,9 +45,9 @@ export function renderFooter(container) {
     <div class="container">
       <div class="footer-grid">
         <div>
-          <a href=appUrl("/index.html") class="footer-brand-box" aria-label="${escapeHtml(storeName)}">
+          <a href="${appUrl("/index.html")}" class="footer-brand-box" aria-label="${escapeHtml(storeName)}">
             <img
-              src=appUrl("/assets/images/logo-removebg-preview.png")
+              src="${appUrl("/assets/images/logo-removebg-preview.png")}"
               alt="${escapeHtml(storeName)}"
               referrerpolicy="no-referrer"
             />
@@ -72,7 +72,7 @@ export function renderFooter(container) {
         <div>
           <h2 class="footer-heading">${escapeHtml(t("footer.customerService", lang))}</h2>
           <ul class="footer-links">
-            <li><a href=appUrl("/pages/order-tracking.html")>${escapeHtml(t("footer.trackOrder", lang))}</a></li>
+            <li><a href="${appUrl("/pages/order-tracking.html")}">${escapeHtml(t("footer.trackOrder", lang))}</a></li>
             <li><a href="/about.html#store-policies">${escapeHtml(t("footer.shippingEgypt", lang))}</a></li>
             <li><a href="/about.html#store-policies">${escapeHtml(t("footer.returns", lang))}</a></li>
             <li><a href="/shop.html">${escapeHtml(t("footer.sizeGuide", lang))}</a></li>
