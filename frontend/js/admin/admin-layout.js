@@ -74,7 +74,7 @@ export function renderAdminAccessDenied(rootEl, { onSignOut }) {
         <h1 class="admin-state-box__title">${escapeHtml(t("admin.accessDeniedTitle", lang))}</h1>
         <p class="admin-state-box__desc">${escapeHtml(t("admin.accessDeniedDesc", lang))}</p>
         <div class="admin-state-actions">
-          <a href=${appUrl("/index.html")} class="btn btn--primary">${escapeHtml(t("admin.returnToStorefront", lang))}</a>
+          <a href=appUrl("/index.html") class="btn btn--primary">${escapeHtml(t("admin.returnToStorefront", lang))}</a>
           <button type="button" class="btn btn--secondary" id="admin-denied-signout">
             ${escapeHtml(t("admin.signOutSwitch", lang))}
           </button>
@@ -114,7 +114,7 @@ function startAdminNotificationPolling(adminId, view, onAuthError) {
   notificationAuthRecovery = onAuthError;
   notificationPollerAdminId = adminId;
   notificationPoller = createNotificationPoller({
-    fetchNotifications: () => api.get(${appUrl("/admin/notifications?limit=50")}),
+    fetchNotifications: () => api.get(appUrl("/admin/notifications?limit=50")),
     onSuccess: (response) => {
       activeNotificationView?.render(
         response?.notifications || [],
@@ -159,9 +159,9 @@ export function renderAdminShell(
       <aside class="admin-sidebar" id="admin-sidebar" aria-label="${escapeHtml(t("admin.brandConsole", lang))}">
         <div class="admin-sidebar__top">
           <div class="admin-sidebar__brand">
-            <a href=${appUrl("/admin/index.html")} class="admin-brand-link">
+            <a href=appUrl("/admin/index.html") class="admin-brand-link">
               <span class="admin-brand-logo-wrap">
-                <img src=${appUrl("/assets/images/mr-zain-logo.png")} alt="MR. ZAIN" referrerpolicy="no-referrer" />
+                <img src=appUrl("/assets/images/mr-zain-logo.png") alt="MR. ZAIN" referrerpolicy="no-referrer" />
               </span>
               <span class="admin-brand-wordmark">MR. ZAIN</span>
             </a>
@@ -198,7 +198,7 @@ export function renderAdminShell(
         </div>
 
         <div class="admin-sidebar__footer">
-          <a href=${appUrl("/index.html")} class="admin-sidebar__store-link">
+          <a href=appUrl("/index.html") class="admin-sidebar__store-link">
             <span>${escapeHtml(t("admin.viewStorefront", lang))}</span>
             <span aria-hidden="true">&nearr;</span>
           </a>
@@ -420,7 +420,7 @@ export function renderAdminShell(
 
   document.getElementById("admin-notifications-read-all")?.addEventListener("click", async () => {
     try {
-      await api.post(${appUrl("/admin/notifications/read-all")}, {});
+      await api.post(appUrl("/admin/notifications/read-all"), {});
       notificationPoller?.refresh();
     } catch {
       // Keep the current list visible when the mutation fails.

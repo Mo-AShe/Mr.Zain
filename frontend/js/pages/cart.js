@@ -133,7 +133,7 @@ function renderCartView() {
               <p class="cart-checkout-future-note">${escapeHtml(t("cart.checkoutResolveStockNote", lang))}</p>
             `
               : `
-              <a href=${appUrl("/pages/checkout.html")} class="btn btn--primary">
+              <a href=appUrl("/pages/checkout.html") class="btn btn--primary">
                 ${escapeHtml(t("cart.proceedCheckout", lang))}
               </a>
             `
@@ -289,7 +289,7 @@ async function handleQuantityChange(item, nextQuantity) {
     showToast(t("cart.updatedSuccess", getLanguage()), "success", 2200);
   } catch (err) {
     if (err && err.status === 401) {
-      redirectToAuth(${appUrl("/pages/cart.html")});
+      redirectToAuth(appUrl("/pages/cart.html"));
       return;
     }
     if (err && (err.code === "INSUFFICIENT_STOCK" || err.code === "OUT_OF_STOCK")) {
@@ -323,7 +323,7 @@ async function handleRemoveItem(item) {
     showToast(t("cart.removedSuccess", getLanguage()), "info");
   } catch (err) {
     if (err && err.status === 401) {
-      redirectToAuth(${appUrl("/pages/cart.html")});
+      redirectToAuth(appUrl("/pages/cart.html"));
       return;
     }
     showToast(
@@ -385,7 +385,7 @@ function bindCartRowHandlers() {
           showToast(t("cart.clearedSuccess", getLanguage()), "info");
         } catch (err) {
           if (err && err.status === 401) {
-            redirectToAuth(${appUrl("/pages/cart.html")});
+            redirectToAuth(appUrl("/pages/cart.html"));
             return;
           }
           showToast(
@@ -411,7 +411,7 @@ async function loadCartPage() {
   try {
     currentCart = await fetchCart({ force: true });
     if (!currentCart) {
-      redirectToAuth(${appUrl("/pages/cart.html")});
+      redirectToAuth(appUrl("/pages/cart.html"));
       return;
     }
   } catch (err) {

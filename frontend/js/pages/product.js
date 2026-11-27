@@ -144,7 +144,7 @@ function renderProductPage() {
 
   if (breadcrumb) {
     breadcrumb.innerHTML = `
-      <a href=${appUrl("/index.html")}>${escapeHtml(t("pdp.breadcrumbHome", lang))}</a>
+      <a href=appUrl("/index.html")>${escapeHtml(t("pdp.breadcrumbHome", lang))}</a>
       <span aria-hidden="true">/</span>
       <a href="/shop.html">${escapeHtml(t("pdp.breadcrumbShop", lang))}</a>
       <span aria-hidden="true">/</span>

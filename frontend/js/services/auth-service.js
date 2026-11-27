@@ -121,7 +121,7 @@ export async function logoutUser() {
   }
 }
 
-export function getSafeRedirectUrl(fallback = ${appUrl("/pages/account.html")}) {
+export function getSafeRedirectUrl(fallback = appUrl("/pages/account.html")) {
   const params = new URLSearchParams(window.location.search);
   const raw = (params.get("redirect") || "").trim();
   if (!raw) return fallback;
@@ -130,7 +130,7 @@ export function getSafeRedirectUrl(fallback = ${appUrl("/pages/account.html")}) 
   if (!raw.startsWith("/") || raw.startsWith("//") || raw.startsWith("/\\")) {
     return fallback;
   }
-  if (raw.startsWith(${appUrl("/pages/auth.html")})) {
+  if (raw.startsWith(appUrl("/pages/auth.html"))) {
     return fallback;
   }
   return raw;

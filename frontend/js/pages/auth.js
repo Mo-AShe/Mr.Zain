@@ -143,7 +143,7 @@ function bindLoginForm() {
     try {
       await loginUser({ email, password, rememberMe });
       showToast(t("auth.welcomeBack", getLanguage()), "success");
-      window.location.replace(getSafeRedirectUrl(${appUrl("/pages/account.html")}));
+      window.location.replace(getSafeRedirectUrl(appUrl("/pages/account.html")));
     } catch (err) {
       lastLoginErrorKey = mapApiErrorKey(err, "login");
       setStatusBanner("login-form-status", lastLoginErrorKey);
@@ -226,7 +226,7 @@ function bindRegisterForm() {
         confirmPassword,
       });
       showToast(t("auth.accountCreated", getLanguage()), "success");
-      window.location.replace(getSafeRedirectUrl(${appUrl("/pages/account.html")}));
+      window.location.replace(getSafeRedirectUrl(appUrl("/pages/account.html")));
     } catch (err) {
       lastRegisterErrorKey = mapApiErrorKey(err, "register");
       setStatusBanner("register-form-status", lastRegisterErrorKey);
@@ -264,7 +264,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   try {
     const user = await fetchCurrentUser({ force: true });
     if (user) {
-      window.location.replace(getSafeRedirectUrl(${appUrl("/pages/account.html")}));
+      window.location.replace(getSafeRedirectUrl(appUrl("/pages/account.html")));
     }
   } catch {
     // Allow guest to stay on auth page

@@ -233,7 +233,7 @@ function renderWishlistView() {
         );
       } catch (err) {
         if (err && err.status === 401) {
-          redirectToAuth(${appUrl("/pages/wishlist.html")});
+          redirectToAuth(appUrl("/pages/wishlist.html"));
           return;
         }
         if (err && (err.code === "INSUFFICIENT_STOCK" || err.code === "OUT_OF_STOCK")) {
@@ -270,7 +270,7 @@ function renderWishlistView() {
         showToast(t("ui.wishlistRemoved", getLanguage()), "info");
       } catch (err) {
         if (err && err.status === 401) {
-          redirectToAuth(${appUrl("/pages/wishlist.html")});
+          redirectToAuth(appUrl("/pages/wishlist.html"));
           return;
         }
         showToast(
@@ -301,7 +301,7 @@ async function loadWishlistPage() {
   try {
     currentWishlist = await fetchWishlist({ force: true });
     if (!currentWishlist) {
-      redirectToAuth(${appUrl("/pages/wishlist.html")});
+      redirectToAuth(appUrl("/pages/wishlist.html"));
       return;
     }
   } catch (err) {
